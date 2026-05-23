@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>리꼬 피자 — 직원 페이지</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header>
+  <h1>RICCO PIZZA</h1>
+  <span id="branch-label"></span>
+</header>
+
+<div id="name-select-screen" style="display:flex;align-items:center;justify-content:center;min-height:80vh;">
+  <div class="card" style="width:360px;">
+    <h2 style="margin-bottom:16px;text-align:center;">본인 이름을 선택하세요</h2>
+    <div id="name-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+    <p id="name-error" style="color:#C62828;margin-top:10px;font-size:13px;text-align:center;"></p>
+  </div>
+</div>
+
+<div id="employee-app" style="display:none;">
+  <div style="padding:12px 24px;background:var(--white);border-bottom:1px solid var(--light);">
+    <span id="selected-name" style="font-weight:600;"></span>
+    <button class="btn btn-ghost btn-sm" style="margin-left:12px;" id="change-name-btn">변경</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="emp-request">휴무 신청</button>
+    <button class="tab-btn" data-tab="emp-schedule">스케줄 확인</button>
+  </div>
+
+  <div id="emp-request"  class="tab-panel active"></div>
+  <div id="emp-schedule" class="tab-panel"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/validator.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/employee-request.js"></script>
+<script src="js/employee-schedule.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const branchId = params.get('branch') || BRANCH_IDS.HANAM;
+  let selectedEmployee = null;
+
+  async function initEmployee() {
+    const branches = await getBranches();
+    const branch = branches.find(b => b.id === branchId);
+    document.getElementById('branch-label').textContent = branch?.name || '';
+
+    const employees = await getEmployees(branchId);
+    const list = document.getElementById('name-list');
+    list.innerHTML = employees.map(e => `
+      <button class="btn btn-ghost" style="text-align:center;" data-emp-id="${e.id}">${e.name}</button>
+    `).join('');
+
+    list.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedEmployee = employees.find(e => e.id === btn.dataset.empId);
+        selectEmployee();
+      });
+    });
+  }
+
+  function selectEmployee() {
+    document.getElementById('name-select-screen').style.display = 'none';
+    document.getElementById('employee-app').style.display = 'block';
+    document.getElementById('selected-name').textContent = selectedEmployee.name;
+    renderRequestTab(selectedEmployee, branchId);
+  }
+
+  document.getElementById('change-name-btn').addEventListener('click', () => {
+    document.getElementById('name-select-screen').style.display = 'flex';
+    document.getElementById('employee-app').style.display = 'none';
+    selectedEmployee = null;
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'emp-schedule') renderEmployeeScheduleTab(selectedEmployee, branchId);
+      if (btn.dataset.tab === 'emp-request')  renderRequestTab(selectedEmployee, branchId);
+    });
+  });
+
+  initEmployee();
+</script>
+</body>
+</html>

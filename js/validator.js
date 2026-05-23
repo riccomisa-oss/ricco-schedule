@@ -31,27 +31,33 @@ function validateDayOffRequest({ employee, date, type, allEmployees, approvedReq
   // 조건 3: 정상 휴무 월 최대
   if (type === 'normal') {
     const cond = conditions.find(c => c.zone === zone);
-    const count = myApproved.filter(r => r.type === 'normal').length;
-    if (count >= cond.max_normal_offs) {
-      return { approved: false, reason: `정상 휴무는 월 최대 ${cond.max_normal_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+    if (cond) {
+      const count = myApproved.filter(r => r.type === 'normal').length;
+      if (count >= cond.max_normal_offs) {
+        return { approved: false, reason: `정상 휴무는 월 최대 ${cond.max_normal_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+      }
     }
   }
 
   // 조건 4: 연차 월 최대
   if (type === 'annual') {
     const cond = conditions.find(c => c.zone === zone);
-    const count = myApproved.filter(r => r.type === 'annual').length;
-    if (count >= cond.max_annual_offs) {
-      return { approved: false, reason: `연차는 월 최대 ${cond.max_annual_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+    if (cond) {
+      const count = myApproved.filter(r => r.type === 'annual').length;
+      if (count >= cond.max_annual_offs) {
+        return { approved: false, reason: `연차는 월 최대 ${cond.max_annual_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+      }
     }
   }
 
   // 조건 2: 주말 휴무 월 최대
   if (weekend) {
     const cond = conditions.find(c => c.zone === zone);
-    const count = myApproved.filter(r => isWeekend(r.date)).length;
-    if (count >= cond.max_weekend_offs) {
-      return { approved: false, reason: `주말 휴무는 월 최대 ${cond.max_weekend_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+    if (cond) {
+      const count = myApproved.filter(r => isWeekend(r.date)).length;
+      if (count >= cond.max_weekend_offs) {
+        return { approved: false, reason: `주말 휴무는 월 최대 ${cond.max_weekend_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
+      }
     }
   }
 

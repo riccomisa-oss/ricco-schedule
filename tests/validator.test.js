@@ -148,3 +148,38 @@ test('override_approved 상태도 횟수 카운트에 포함', () => {
   expect(result.approved).toBe(false);
   expect(result.reason).toContain('연차');
 });
+
+// 홀 정직원 최소 인원
+test('홀 정직원 부족 시 거절', () => {
+  const hallFullEmployee = hallEmployees[0]; // hall_full (emp-4)
+  const approvedRequests = [];
+  // hallEmployees = [emp-4(fulltime), emp-5(parttime)]
+  // emp-4가 신청하면 fulltime 0명 → 최소 1명 미충족
+  const result = validateDayOffRequest({
+    employee: hallFullEmployee,
+    date: '2026-06-02',
+    type: 'normal',
+    allEmployees,
+    approvedRequests,
+    conditions: baseConditions,
+  });
+  expect(result.approved).toBe(false);
+  expect(result.reason).toContain('정직원');
+});
+
+// 홀 파트타임 최소 인원
+test('홀 파트타임 부족 시 거절', () => {
+  const hallPartEmployee = hallEmployees[1]; // hall_part (emp-5)
+  const approvedRequests = [];
+  // emp-5가 신청하면 parttime 0명 → 최소 1명 미충족
+  const result = validateDayOffRequest({
+    employee: hallPartEmployee,
+    date: '2026-06-02',
+    type: 'normal',
+    allEmployees,
+    approvedRequests,
+    conditions: baseConditions,
+  });
+  expect(result.approved).toBe(false);
+  expect(result.reason).toContain('파트타임');
+});

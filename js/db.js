@@ -1,15 +1,15 @@
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Branches ──────────────────────────────────────────────
 async function getBranches() {
-  const { data, error } = await supabase.from('branches').select('*').order('name');
+  const { data, error } = await db.from('branches').select('*').order('name');
   if (error) throw error;
   return data;
 }
 
 // ── Employees ─────────────────────────────────────────────
 async function getEmployees(branchId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .select('*')
     .eq('branch_id', branchId)
@@ -29,7 +29,7 @@ async function createEmployee({ branchId, name, role }) {
     hall_part:     { employment_type: 'parttime',  pizza_capable: false, pasta_capable: false },
   };
   const caps = roleCapabilities[role];
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('employees')
     .insert({ branch_id: branchId, name, role, ...caps })
     .select()
@@ -48,7 +48,7 @@ async function updateEmployee(id, { name, role }) {
     hall_part:     { employment_type: 'parttime',  pizza_capable: false, pasta_capable: false },
   };
   const caps = roleCapabilities[role];
-  const { error } = await supabase
+  const { error } = await db
     .from('employees')
     .update({ name, role, ...caps })
     .eq('id', id);
@@ -56,7 +56,7 @@ async function updateEmployee(id, { name, role }) {
 }
 
 async function deactivateEmployee(id) {
-  const { error } = await supabase
+  const { error } = await db
     .from('employees')
     .update({ active: false })
     .eq('id', id);
@@ -65,7 +65,7 @@ async function deactivateEmployee(id) {
 
 // ── Schedule Conditions ───────────────────────────────────
 async function getConditions(branchId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('schedule_conditions')
     .select('*')
     .eq('branch_id', branchId);
@@ -74,7 +74,7 @@ async function getConditions(branchId) {
 }
 
 async function updateCondition(id, fields) {
-  const { error } = await supabase
+  const { error } = await db
     .from('schedule_conditions')
     .update(fields)
     .eq('id', id);
@@ -85,7 +85,7 @@ async function updateCondition(id, fields) {
 async function getDayOffRequests(branchId, year, month) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('day_off_requests')
     .select('*, employees(name, role, branch_id)')
     .gte('date', startDate)
@@ -98,7 +98,7 @@ async function getDayOffRequests(branchId, year, month) {
 async function getEmployeeDayOffRequests(employeeId, year, month) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const endDate = new Date(year, month, 0).toISOString().split('T')[0];
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('day_off_requests')
     .select('*')
     .eq('employee_id', employeeId)
@@ -110,7 +110,7 @@ async function getEmployeeDayOffRequests(employeeId, year, month) {
 }
 
 async function createDayOffRequest({ employeeId, date, type, status, rejectionReason }) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('day_off_requests')
     .insert({
       employee_id: employeeId,
@@ -126,7 +126,7 @@ async function createDayOffRequest({ employeeId, date, type, status, rejectionRe
 }
 
 async function overrideDayOffRequest(id, newStatus) {
-  const { error } = await supabase
+  const { error } = await db
     .from('day_off_requests')
     .update({ status: newStatus, overridden_at: new Date().toISOString() })
     .eq('id', id);
@@ -135,7 +135,7 @@ async function overrideDayOffRequest(id, newStatus) {
 
 // ── Schedules ─────────────────────────────────────────────
 async function getOrCreateSchedule(branchId, year, month) {
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from('schedules')
     .select('*')
     .eq('branch_id', branchId)
@@ -144,7 +144,7 @@ async function getOrCreateSchedule(branchId, year, month) {
     .single();
   if (existing) return existing;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('schedules')
     .insert({ branch_id: branchId, year, month })
     .select()
@@ -154,7 +154,7 @@ async function getOrCreateSchedule(branchId, year, month) {
 }
 
 async function publishSchedule(scheduleId) {
-  const { error } = await supabase
+  const { error } = await db
     .from('schedules')
     .update({ published_at: new Date().toISOString() })
     .eq('id', scheduleId);
@@ -162,7 +162,7 @@ async function publishSchedule(scheduleId) {
 }
 
 async function unpublishSchedule(scheduleId) {
-  const { error } = await supabase
+  const { error } = await db
     .from('schedules')
     .update({ published_at: null })
     .eq('id', scheduleId);
@@ -171,7 +171,7 @@ async function unpublishSchedule(scheduleId) {
 
 // ── Schedule Entries ──────────────────────────────────────
 async function getScheduleEntries(scheduleId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('schedule_entries')
     .select('*, employees(name, role)')
     .eq('schedule_id', scheduleId);
@@ -180,7 +180,7 @@ async function getScheduleEntries(scheduleId) {
 }
 
 async function upsertScheduleEntry({ scheduleId, employeeId, date, shiftType }) {
-  const { error } = await supabase
+  const { error } = await db
     .from('schedule_entries')
     .upsert(
       { schedule_id: scheduleId, employee_id: employeeId, date, shift_type: shiftType },

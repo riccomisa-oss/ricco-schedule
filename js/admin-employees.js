@@ -1,0 +1,100 @@
+async function renderEmployeesTab(branchId) {
+  const el = document.getElementById('employees');
+  el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
+
+  const employees = await getEmployees(branchId);
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2>직원 목록 (${employees.length}명)</h2>
+      <button class="btn btn-primary" id="add-emp-btn">+ 직원 추가</button>
+    </div>
+    <div class="card" style="padding:0;">
+      <table class="data-table">
+        <thead>
+          <tr><th>이름</th><th>역할</th><th>고용형태</th><th>능력</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${employees.map(e => `
+            <tr>
+              <td>${e.name}</td>
+              <td>${ROLE_LABELS[e.role]}</td>
+              <td>${e.employment_type === 'fulltime' ? '정직원' : '파트타임'}</td>
+              <td>
+                ${e.pizza_capable  ? '<span class="badge badge-approved">피자</span>' : ''}
+                ${e.pasta_capable  ? '<span class="badge badge-approved">파스타</span>' : ''}
+                ${!e.pizza_capable && !e.pasta_capable && e.role.startsWith('kitchen') ? '<span class="badge">보조</span>' : ''}
+              </td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}')">수정</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="confirmDeactivate('${e.id}','${e.name}')">삭제</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="modal-overlay" id="emp-modal">
+      <div class="modal">
+        <h2 id="emp-modal-title">직원 추가</h2>
+        <div class="form-group">
+          <label>이름</label>
+          <input type="text" id="emp-name" placeholder="홍길동" />
+        </div>
+        <div class="form-group">
+          <label>역할</label>
+          <select id="emp-role">
+            ${Object.entries(ROLE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="closeEmpModal()">취소</button>
+          <button class="btn btn-primary" id="emp-save-btn">저장</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let editingId = null;
+
+  document.getElementById('add-emp-btn').addEventListener('click', () => {
+    editingId = null;
+    document.getElementById('emp-modal-title').textContent = '직원 추가';
+    document.getElementById('emp-name').value = '';
+    document.getElementById('emp-role').value = 'kitchen_full';
+    document.getElementById('emp-modal').classList.add('open');
+  });
+
+  document.getElementById('emp-save-btn').addEventListener('click', async () => {
+    const name = document.getElementById('emp-name').value.trim();
+    const role = document.getElementById('emp-role').value;
+    if (!name) return alert('이름을 입력하세요.');
+    if (editingId) {
+      await updateEmployee(editingId, { name, role });
+    } else {
+      await createEmployee({ branchId, name, role });
+    }
+    closeEmpModal();
+    renderEmployeesTab(branchId);
+  });
+
+  window.openEditEmployee = (id, name, role) => {
+    editingId = id;
+    document.getElementById('emp-modal-title').textContent = '직원 수정';
+    document.getElementById('emp-name').value = name;
+    document.getElementById('emp-role').value = role;
+    document.getElementById('emp-modal').classList.add('open');
+  };
+
+  window.closeEmpModal = () => {
+    document.getElementById('emp-modal').classList.remove('open');
+  };
+
+  window.confirmDeactivate = async (id, name) => {
+    if (confirm(`"${name}"을(를) 삭제하시겠습니까?`)) {
+      await deactivateEmployee(id);
+      renderEmployeesTab(branchId);
+    }
+  };
+}

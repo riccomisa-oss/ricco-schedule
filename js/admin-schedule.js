@@ -359,6 +359,41 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
   const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin);
   const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds);
 
+  // 홀 최대 3인 초과 날은 추가 휴무 강제 배정
+  const MAX_HALL_WORKERS = 3;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const working = hallEmps.filter(e =>
+      !approvedOffDates.get(e.id)?.has(dateStr) &&
+      !hallAutoOff.get(e.id)?.has(dateStr)
+    );
+    const excess = working.length - MAX_HALL_WORKERS;
+    if (excess <= 0) continue;
+
+    // 파트타이머 우선, 동순위면 이미 off가 적은 쪽 (많이 일한 쪽에 휴무)
+    const candidates = [...working].sort((a, b) => {
+      const aFt = hallFullTimeIds.has(a.id) ? 1 : 0;
+      const bFt = hallFullTimeIds.has(b.id) ? 1 : 0;
+      if (aFt !== bFt) return aFt - bFt;
+      return (hallAutoOff.get(a.id)?.size || 0) - (hallAutoOff.get(b.id)?.size || 0);
+    });
+
+    const forcedOff = new Set();
+    let forced = 0;
+    for (const emp of candidates) {
+      if (forced >= excess) break;
+      if (hallFullTimeIds.has(emp.id)) {
+        const remainingFt = working.filter(e =>
+          hallFullTimeIds.has(e.id) && e.id !== emp.id && !forcedOff.has(e.id)
+        ).length;
+        if (remainingFt === 0) continue; // 정직원 마지막 1명은 건드리지 않음
+      }
+      hallAutoOff.get(emp.id).add(dateStr);
+      forcedOff.add(emp.id);
+      forced++;
+    }
+  }
+
   function isOff(emp, dateStr) {
     return approvedOffDates.get(emp.id)?.has(dateStr)
         || kitchenAutoOff.get(emp.id)?.has(dateStr)

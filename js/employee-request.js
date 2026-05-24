@@ -30,22 +30,21 @@ async function renderRequestTab(employee, branchId) {
 
       <div class="card" style="margin-bottom:16px;">
         <h3 style="margin-bottom:12px;">휴무 신청</h3>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <div class="form-group" style="margin:0;flex:1;min-width:140px;">
-            <label>날짜</label>
-            <input type="date" id="req-date"
-              min="${year}-${String(month).padStart(2,'0')}-01"
-              max="${new Date(year, month, 0).toISOString().split('T')[0]}" />
-          </div>
-          <div class="form-group" style="margin:0;flex:1;min-width:140px;">
-            <label>유형</label>
-            <select id="req-type">
-              <option value="normal">정상 휴무</option>
-              <option value="annual">연차</option>
-            </select>
-          </div>
+        <div class="form-group" style="margin:0 0 8px 0;">
+          <label>날짜</label>
+          <input type="date" id="req-date"
+            min="${year}-${String(month).padStart(2,'0')}-01"
+            max="${new Date(year, month, 0).toISOString().split('T')[0]}"
+            style="width:100%;box-sizing:border-box;" />
         </div>
-        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;margin-top:12px;">신청</button>
+        <div class="form-group" style="margin:0 0 12px 0;">
+          <label>유형</label>
+          <select id="req-type" style="width:100%;box-sizing:border-box;">
+            <option value="normal">정상 휴무</option>
+            <option value="annual">연차</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
       </div>
 
       <div class="card" style="padding:0;">

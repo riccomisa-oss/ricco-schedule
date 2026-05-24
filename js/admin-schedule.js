@@ -156,7 +156,7 @@ async function renderScheduleTab(branchId) {
           const cells = days.map(({ d }) => shiftCell(emp, d)).join('');
           const wkOff = monthlyWeekendOff.get(emp.id) || 0;
           return `<tr style="${borderTop ? 'border-top:2px solid var(--olive);' : ''}border-bottom:1px solid var(--light);">
-            <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);">
+            <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);position:sticky;left:0;z-index:1;">
               <div style="font-size:10px;color:var(--gray);">${isHall ? '홀' : '주방'}</div>
               <div style="font-size:13px;font-weight:600;">${emp.name}</div>
               <div style="font-size:10px;color:#1565c0;margin-top:2px;">주말휴 ${wkOff}일</div>
@@ -174,11 +174,11 @@ async function renderScheduleTab(branchId) {
               <span style="font-size:15px;font-weight:700;">${wi + 1}주차</span>
               <span style="font-size:13px;color:var(--gray);">${range}</span>
             </div>
-            <div style="border:1px solid var(--light);border-radius:8px;overflow:hidden;">
-              <table style="border-collapse:collapse;width:100%;">
+            <div style="border:1px solid var(--light);border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+              <table style="border-collapse:collapse;width:max-content;min-width:100%;">
                 <thead>
                   <tr style="background:var(--olive);color:var(--white);">
-                    <th style="min-width:72px;padding:6px 10px;text-align:left;font-size:12px;">직원</th>
+                    <th style="min-width:72px;padding:6px 10px;text-align:left;font-size:12px;position:sticky;left:0;background:var(--olive);z-index:2;">직원</th>
                     ${thCells}
                   </tr>
                 </thead>

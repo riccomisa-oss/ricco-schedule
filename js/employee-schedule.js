@@ -44,28 +44,39 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         entries.filter(e => e.employee_id === employee.id).map(e => [e.date, e])
       );
 
-      // 날짜별 출근 직원 이름 목록 (본인 제외, off 제외)
+      // 날짜별 출근 직원 목록 (본인 제외, off 제외) — role 포함
       const workersByDate = new Map();
       entries
         .filter(e => e.employee_id !== employee.id && e.shift_type !== 'off')
         .forEach(e => {
           if (!workersByDate.has(e.date)) workersByDate.set(e.date, []);
-          workersByDate.get(e.date).push(e.employees?.name || '?');
+          workersByDate.get(e.date).push({
+            name: e.employees?.name || '?',
+            role: e.employees?.role || '',
+          });
         });
+
+      const nameStyle = 'font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block;';
+      const groupLabel = 'font-size:9px;color:var(--gray);margin-top:3px;margin-bottom:1px;';
 
       function renderCell(date) {
         const myEntry = myEntryMap.get(date);
         const workers = workersByDate.get(date) || [];
+        const kitchen = workers.filter(w => w.role.startsWith('kitchen'));
+        const hall    = workers.filter(w => w.role.startsWith('hall'));
         let html = '';
 
         if (myEntry?.shift_type === 'off') {
           html += '<span class="shift-chip off">휴무</span>';
         }
 
-        if (workers.length > 0) {
-          html += `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:2px;">
-            ${workers.map(name => `<span style="font-size:10px;color:#555;background:#e8e8e4;border-radius:3px;padding:1px 5px;">${name}</span>`).join('')}
-          </div>`;
+        if (kitchen.length > 0) {
+          html += `<div style="${groupLabel}">주방</div>`;
+          html += kitchen.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
+        }
+        if (hall.length > 0) {
+          html += `<div style="${groupLabel}">홀</div>`;
+          html += hall.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
         }
 
         return html;

@@ -129,13 +129,22 @@ async function renderEmployeesTab(branchId) {
     if (!name) return alert('이름을 입력하세요.');
     if (annualLeaveCheck && !annualLeaveTotalRaw) return alert('연차 일수를 입력하세요.');
 
-    if (editingId) {
-      await updateEmployee(editingId, { name, role, openCapable, annualLeaveTotal });
-    } else {
-      await createEmployee({ branchId, name, role, openCapable, annualLeaveTotal });
+    try {
+      if (editingId) {
+        await updateEmployee(editingId, { name, role, openCapable, annualLeaveTotal });
+      } else {
+        await createEmployee({ branchId, name, role, openCapable, annualLeaveTotal });
+      }
+      closeEmpModal();
+      renderEmployeesTab(branchId);
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      if (msg.includes('annual_leave_total') || msg.includes('column')) {
+        alert('저장 실패: Supabase SQL Editor에서 아래 쿼리를 실행해주세요.\n\nALTER TABLE employees ADD COLUMN IF NOT EXISTS annual_leave_total integer;');
+      } else {
+        alert('저장 실패: ' + msg);
+      }
     }
-    closeEmpModal();
-    renderEmployeesTab(branchId);
   });
 
   window.openEditEmployee = (id, name, role, openCapable, annualLeaveTotal) => {

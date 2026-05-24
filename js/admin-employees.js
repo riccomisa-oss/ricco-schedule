@@ -12,7 +12,7 @@ async function renderEmployeesTab(branchId) {
     <div class="card" style="padding:0;">
       <table class="data-table">
         <thead>
-          <tr><th>이름</th><th>역할</th><th>고용형태</th><th>능력</th><th></th></tr>
+          <tr><th>이름</th><th>역할</th><th>고용형태</th><th>능력</th><th>오픈 가능</th><th></th></tr>
         </thead>
         <tbody>
           ${employees.map(e => `
@@ -26,7 +26,15 @@ async function renderEmployeesTab(branchId) {
                 ${!e.pizza_capable && !e.pasta_capable && e.role.startsWith('kitchen') ? '<span class="badge">보조</span>' : ''}
               </td>
               <td>
-                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}')">수정</button>
+                ${e.role.startsWith('kitchen')
+                  ? `<button class="btn btn-sm ${e.open_capable ? 'btn-primary' : 'btn-ghost'}"
+                       onclick="toggleOpenCapable('${e.id}', ${e.open_capable})">
+                       ${e.open_capable ? '✓ 가능' : '—'}
+                     </button>`
+                  : '<span style="color:var(--gray);font-size:12px;">홀</span>'}
+              </td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}',${e.open_capable})">수정</button>
                 <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="confirmDeactivate('${e.id}','${e.name}')">삭제</button>
               </td>
             </tr>
@@ -48,6 +56,12 @@ async function renderEmployeesTab(branchId) {
             ${Object.entries(ROLE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
           </select>
         </div>
+        <div class="form-group" id="open-capable-group" style="display:none;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="emp-open-capable" style="width:16px;height:16px;" />
+            오픈 시프트 가능 (09:30 출근)
+          </label>
+        </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" onclick="closeEmpModal()">취소</button>
           <button class="btn btn-primary" id="emp-save-btn">저장</button>
@@ -58,37 +72,57 @@ async function renderEmployeesTab(branchId) {
 
   let editingId = null;
 
+  function updateOpenCapableVisibility() {
+    const role = document.getElementById('emp-role').value;
+    document.getElementById('open-capable-group').style.display =
+      role.startsWith('kitchen') ? 'block' : 'none';
+  }
+
+  document.getElementById('emp-role').addEventListener('change', updateOpenCapableVisibility);
+
   document.getElementById('add-emp-btn').addEventListener('click', () => {
     editingId = null;
     document.getElementById('emp-modal-title').textContent = '직원 추가';
     document.getElementById('emp-name').value = '';
     document.getElementById('emp-role').value = 'kitchen_full';
+    document.getElementById('emp-open-capable').checked = false;
+    updateOpenCapableVisibility();
     document.getElementById('emp-modal').classList.add('open');
   });
 
   document.getElementById('emp-save-btn').addEventListener('click', async () => {
     const name = document.getElementById('emp-name').value.trim();
     const role = document.getElementById('emp-role').value;
+    const openCapable = role.startsWith('kitchen')
+      ? document.getElementById('emp-open-capable').checked
+      : false;
     if (!name) return alert('이름을 입력하세요.');
     if (editingId) {
-      await updateEmployee(editingId, { name, role });
+      await updateEmployee(editingId, { name, role, openCapable });
     } else {
-      await createEmployee({ branchId, name, role });
+      await createEmployee({ branchId, name, role, openCapable });
     }
     closeEmpModal();
     renderEmployeesTab(branchId);
   });
 
-  window.openEditEmployee = (id, name, role) => {
+  window.openEditEmployee = (id, name, role, openCapable) => {
     editingId = id;
     document.getElementById('emp-modal-title').textContent = '직원 수정';
     document.getElementById('emp-name').value = name;
     document.getElementById('emp-role').value = role;
+    document.getElementById('emp-open-capable').checked = !!openCapable;
+    updateOpenCapableVisibility();
     document.getElementById('emp-modal').classList.add('open');
   };
 
   window.closeEmpModal = () => {
     document.getElementById('emp-modal').classList.remove('open');
+  };
+
+  window.toggleOpenCapable = async (id, current) => {
+    await db.from('employees').update({ open_capable: !current }).eq('id', id);
+    renderEmployeesTab(branchId);
   };
 
   window.confirmDeactivate = async (id, name) => {

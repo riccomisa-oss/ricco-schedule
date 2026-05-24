@@ -19,7 +19,7 @@ async function getEmployees(branchId) {
   return data;
 }
 
-async function createEmployee({ branchId, name, role }) {
+async function createEmployee({ branchId, name, role, openCapable = false }) {
   const roleCapabilities = {
     kitchen_full:  { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: true  },
     kitchen_pizza: { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: false },
@@ -31,14 +31,14 @@ async function createEmployee({ branchId, name, role }) {
   const caps = roleCapabilities[role];
   const { data, error } = await db
     .from('employees')
-    .insert({ branch_id: branchId, name, role, ...caps })
+    .insert({ branch_id: branchId, name, role, open_capable: openCapable, ...caps })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-async function updateEmployee(id, { name, role }) {
+async function updateEmployee(id, { name, role, openCapable = false }) {
   const roleCapabilities = {
     kitchen_full:  { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: true  },
     kitchen_pizza: { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: false },
@@ -50,7 +50,7 @@ async function updateEmployee(id, { name, role }) {
   const caps = roleCapabilities[role];
   const { error } = await db
     .from('employees')
-    .update({ name, role, ...caps })
+    .update({ name, role, open_capable: openCapable, ...caps })
     .eq('id', id);
   if (error) throw error;
 }

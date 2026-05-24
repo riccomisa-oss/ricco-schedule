@@ -97,58 +97,83 @@ async function renderScheduleTab(branchId) {
     const DAY_NAMES = ['일','월','화','수','목','금','토'];
 
     function renderPreview() {
-      const days = [];
+      const pfx = `${year}-${String(month).padStart(2,'0')}`;
+
+      // 일요일 기준으로 주 분리
+      const weeks = [];
+      let week = [];
       for (let d = 1; d <= daysInMonth; d++) {
-        const date = new Date(year, month - 1, d);
-        days.push({ d, dow: date.getDay() });
+        const dow = new Date(year, month - 1, d).getDay();
+        if (dow === 0 && week.length) { weeks.push(week); week = []; }
+        week.push({ d, dow });
+      }
+      if (week.length) weeks.push(week);
+
+      function shiftCell(emp, d) {
+        const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+        if (approvedOffDates.get(emp.id)?.has(dateStr)) {
+          return `<td style="background:#fff3e0;text-align:center;padding:6px 2px;">
+            <span style="font-size:12px;color:#e65100;font-weight:600;">휴신청</span></td>`;
+        }
+        const entry = entryMap.get(`${emp.id}_${dateStr}`);
+        const shift = entry?.shift_type;
+        if (!shift) return `<td style="text-align:center;color:#ddd;">—</td>`;
+        const s = SHIFT_COLORS[shift] || {};
+        return `<td style="background:${s.bg};text-align:center;padding:6px 2px;">
+          <span style="font-size:13px;color:${s.color};font-weight:700;">${s.label}</span></td>`;
       }
 
-      const headerCells = days.map(({ d, dow }) => {
-        const isHoliday = KOREAN_HOLIDAYS[year]?.has(`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
-        const color = (dow === 0 || isHoliday) ? '#c62828' : dow === 6 ? '#1565c0' : 'inherit';
-        return `<th style="min-width:36px;text-align:center;font-size:11px;padding:4px 2px;color:${color};">
-          ${d}<br><span style="font-weight:400;">${DAY_NAMES[dow]}</span>
-        </th>`;
-      }).join('');
+      const weekCards = weeks.map((days, wi) => {
+        const first = days[0], last = days[days.length - 1];
+        const range = `${month}/${first.d}(${DAY_NAMES[first.dow]}) ~ ${month}/${last.d}(${DAY_NAMES[last.dow]})`;
 
-      const rows = allEmps.map(emp => {
-        const isHall = emp.role.startsWith('hall');
-        const cells = days.map(({ d }) => {
-          const date = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-          const isApprovedOff = approvedOffDates.get(emp.id)?.has(date);
-          if (isApprovedOff) {
-            return `<td style="text-align:center;padding:2px;"><span style="font-size:10px;background:#fff3e0;color:#e65100;border-radius:3px;padding:1px 4px;">휴신청</span></td>`;
-          }
-          const entry = entryMap.get(`${emp.id}_${date}`);
-          const shift = entry?.shift_type;
-          if (!shift) return `<td style="text-align:center;color:#ddd;font-size:10px;">—</td>`;
-          const s = SHIFT_COLORS[shift] || {};
-          return `<td style="text-align:center;padding:2px;">
-            <span style="font-size:10px;background:${s.bg};color:${s.color};border-radius:3px;padding:1px 4px;font-weight:600;">${s.label}</span>
-          </td>`;
+        const thCells = days.map(({ d, dow }) => {
+          const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+          const isHoliday = KOREAN_HOLIDAYS[year]?.has(dateStr);
+          const color = (dow === 0 || isHoliday) ? '#c62828' : dow === 6 ? '#1565c0' : '#fff';
+          return `<th style="min-width:52px;text-align:center;padding:6px 4px;">
+            <div style="font-size:11px;font-weight:400;opacity:.85;">${DAY_NAMES[dow]}</div>
+            <div style="font-size:17px;font-weight:700;color:${color};">${d}</div>
+          </th>`;
         }).join('');
 
-        return `<tr>
-          <td style="white-space:nowrap;padding:4px 8px;font-size:12px;border-right:2px solid var(--light);position:sticky;left:0;background:var(--white);z-index:1;">
-            <span style="color:var(--gray);font-size:10px;">${isHall ? '홀' : '주방'}</span><br>${emp.name}
-          </td>
-          ${cells}
-        </tr>`;
+        function empRow(emp, borderTop) {
+          const isHall = emp.role.startsWith('hall');
+          const cells = days.map(({ d }) => shiftCell(emp, d)).join('');
+          return `<tr style="${borderTop ? 'border-top:2px solid var(--olive);' : ''}border-bottom:1px solid var(--light);">
+            <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);">
+              <div style="font-size:10px;color:var(--gray);">${isHall ? '홀' : '주방'}</div>
+              <div style="font-size:13px;font-weight:600;">${emp.name}</div>
+            </td>
+            ${cells}
+          </tr>`;
+        }
+
+        const kitchenRows = kitchenEmps.map(e => empRow(e, false)).join('');
+        const hallRows    = hallEmps.map((e, i) => empRow(e, i === 0)).join('');
+
+        return `
+          <div style="margin-bottom:28px;">
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
+              <span style="font-size:15px;font-weight:700;">${wi + 1}주차</span>
+              <span style="font-size:13px;color:var(--gray);">${range}</span>
+            </div>
+            <div style="border:1px solid var(--light);border-radius:8px;overflow:hidden;">
+              <table style="border-collapse:collapse;width:100%;">
+                <thead>
+                  <tr style="background:var(--olive);color:var(--white);">
+                    <th style="min-width:72px;padding:6px 10px;text-align:left;font-size:12px;">직원</th>
+                    ${thCells}
+                  </tr>
+                </thead>
+                <tbody>${kitchenRows}${hallRows}</tbody>
+              </table>
+            </div>
+          </div>`;
       }).join('');
 
-      return `
-        <div style="overflow-x:auto;border:1px solid var(--light);border-radius:8px;">
-          <table style="border-collapse:collapse;width:max-content;min-width:100%;">
-            <thead>
-              <tr style="background:var(--olive);color:var(--white);">
-                <th style="min-width:64px;padding:6px 8px;text-align:left;position:sticky;left:0;background:var(--olive);z-index:2;">직원</th>
-                ${headerCells}
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
+      return weekCards + `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
           ${Object.values(SHIFT_COLORS).map(s =>
             `<span style="background:${s.bg};color:${s.color};border-radius:3px;padding:2px 8px;font-weight:600;">${s.label}</span>`
           ).join('')}

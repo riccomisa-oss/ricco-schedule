@@ -123,6 +123,20 @@ async function renderScheduleTab(branchId) {
           <span style="font-size:13px;color:${s.color};font-weight:700;">${s.label}</span></td>`;
       }
 
+      // 직원별 월간 주말·공휴일 휴무 총계 (승인 휴무 신청 + 배정 off 포함)
+      const monthlyWeekendOff = new Map();
+      allEmps.forEach(emp => {
+        let count = 0;
+        for (let d = 1; d <= daysInMonth; d++) {
+          if (!isHolidayOrWeekend(year, month, d)) continue;
+          const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+          const isOff = approvedOffDates.get(emp.id)?.has(dateStr) ||
+            entryMap.get(`${emp.id}_${dateStr}`)?.shift_type === 'off';
+          if (isOff) count++;
+        }
+        monthlyWeekendOff.set(emp.id, count);
+      });
+
       const weekCards = weeks.map((days, wi) => {
         const first = days[0], last = days[days.length - 1];
         const range = `${month}/${first.d}(${DAY_NAMES[first.dow]}) ~ ${month}/${last.d}(${DAY_NAMES[last.dow]})`;
@@ -140,10 +154,12 @@ async function renderScheduleTab(branchId) {
         function empRow(emp, borderTop) {
           const isHall = emp.role.startsWith('hall');
           const cells = days.map(({ d }) => shiftCell(emp, d)).join('');
+          const wkOff = monthlyWeekendOff.get(emp.id) || 0;
           return `<tr style="${borderTop ? 'border-top:2px solid var(--olive);' : ''}border-bottom:1px solid var(--light);">
             <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);">
               <div style="font-size:10px;color:var(--gray);">${isHall ? '홀' : '주방'}</div>
               <div style="font-size:13px;font-weight:600;">${emp.name}</div>
+              <div style="font-size:10px;color:#1565c0;margin-top:2px;">주말휴 ${wkOff}일</div>
             </td>
             ${cells}
           </tr>`;

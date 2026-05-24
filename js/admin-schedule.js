@@ -216,6 +216,7 @@ async function renderScheduleTab(branchId) {
              <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>`
         }
       </div>
+      <div id="annual-leave-section" style="margin-top:24px;"></div>
     `;
 
     document.getElementById('toggle-view-btn').addEventListener('click', () => {
@@ -255,6 +256,37 @@ async function renderScheduleTab(branchId) {
       else await publishSchedule(schedule.id);
       render();
     });
+
+    // 연차 현황 비동기 렌더링
+    getAnnualLeaveStats(branchId, year).then(stats => {
+      const section = document.getElementById('annual-leave-section');
+      if (!section) return;
+      if (stats.length === 0) { section.innerHTML = ''; return; }
+      section.innerHTML = `
+        <h3 style="margin-bottom:12px;">연차 현황 (${year}년)</h3>
+        <div class="card" style="padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>이름</th><th>역할</th><th style="text-align:center;">총 연차</th><th style="text-align:center;">사용</th><th style="text-align:center;">잔여</th></tr>
+            </thead>
+            <tbody>
+              ${stats.map(({ emp, total, used, remaining }) => `
+                <tr>
+                  <td>${emp.name}</td>
+                  <td style="font-size:12px;color:var(--gray);">${ROLE_LABELS[emp.role]}</td>
+                  <td style="text-align:center;">${total}일</td>
+                  <td style="text-align:center;">${used}일</td>
+                  <td style="text-align:center;">
+                    <span style="font-weight:700;color:${remaining < 0 ? 'var(--red)' : remaining <= 3 ? '#e65100' : 'var(--olive)'};">
+                      ${remaining}일
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }).catch(() => {});
   }
 
   await render();

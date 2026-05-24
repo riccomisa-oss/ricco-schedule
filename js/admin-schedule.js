@@ -155,11 +155,14 @@ async function renderScheduleTab(branchId) {
           const isHall = emp.role.startsWith('hall');
           const cells = days.map(({ d }) => shiftCell(emp, d)).join('');
           const wkOff = monthlyWeekendOff.get(emp.id) || 0;
+          const wkOffLabel = emp.employment_type === 'fulltime'
+            ? `<div style="font-size:10px;color:#1565c0;margin-top:2px;">주말휴 ${wkOff}일</div>`
+            : '';
           return `<tr style="${borderTop ? 'border-top:2px solid var(--olive);' : ''}border-bottom:1px solid var(--light);">
             <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);position:sticky;left:0;z-index:1;">
               <div style="font-size:10px;color:var(--gray);">${isHall ? '홀' : '주방'}</div>
               <div style="font-size:13px;font-weight:600;">${emp.name}</div>
-              <div style="font-size:10px;color:#1565c0;margin-top:2px;">주말휴 ${wkOff}일</div>
+              ${wkOffLabel}
             </td>
             ${cells}
           </tr>`;

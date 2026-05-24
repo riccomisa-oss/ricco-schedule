@@ -215,42 +215,49 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
   const autoOff = new Map();
   emps.forEach(e => autoOff.set(e.id, new Set()));
 
-  const MAX_MONTHLY_OFF = 8;
+  const TARGET_OFF = 8; // 월 최소 휴무 목표
   const MAX_WEEKEND_OFF = 2;
   const N = emps.length;
 
-  // 각 직원에게 순번 할당: 직원 i는 (i+1)일, (i+1+N)일, ... 에 휴무
-  for (let i = 0; i < N; i++) {
-    const emp = emps[i];
-    for (let day = i + 1; day <= daysInMonth; day += N) {
-      const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      const dow = new Date(year, month - 1, day).getDay();
-      const isWeekend = dow === 0 || dow === 6;
+  function countWeekendOffs(empId) {
+    let n = 0;
+    autoOff.get(empId)?.forEach(d => {
+      const dow = new Date(d + 'T00:00:00').getDay();
+      if (dow === 0 || dow === 6) n++;
+    });
+    approvedOffDates.get(empId)?.forEach(d => {
+      const dow = new Date(d + 'T00:00:00').getDay();
+      if (dow === 0 || dow === 6) n++;
+    });
+    return n;
+  }
 
-      // 이미 승인된 휴무 신청이 있으면 auto-off 불필요
-      if (approvedOffDates.get(emp.id)?.has(dateStr)) continue;
+  function totalOff(empId) {
+    let n = autoOff.get(empId).size;
+    approvedOffDates.get(empId)?.forEach(d => {
+      if (d.startsWith(`${year}-${String(month).padStart(2,'0')}`)) n++;
+    });
+    return n;
+  }
 
-      // 월 최대 휴무 초과 확인
-      if (autoOff.get(emp.id).size >= MAX_MONTHLY_OFF) continue;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dow = new Date(year, month - 1, day).getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
+    if (maxOff <= 0) continue;
 
-      // 주말 최대 휴무 초과 확인
-      if (isWeekend) {
-        const weekendOffs = [...autoOff.get(emp.id)].filter(d => {
-          const dow = new Date(d + 'T00:00:00').getDay();
-          return dow === 0 || dow === 6;
-        }).length;
-        if (weekendOffs >= MAX_WEEKEND_OFF) continue;
-      }
+    // 오늘 휴무 줄 수 있는 직원: 목표 미달 + 주말 한도 미초과 + 승인 휴무 없음
+    const eligible = emps
+      .filter(e => {
+        if (approvedOffDates.get(e.id)?.has(dateStr)) return false;
+        if (totalOff(e.id) >= TARGET_OFF) return false;
+        if (isWeekend && countWeekendOffs(e.id) >= MAX_WEEKEND_OFF) return false;
+        return true;
+      })
+      .sort((a, b) => totalOff(a.id) - totalOff(b.id)); // 휴무 적은 사람 우선
 
-      // 이 날 이미 off인 인원 수 확인 (최소 인원 유지)
-      const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
-      const alreadyOff = emps.filter(e =>
-        approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id)?.has(dateStr)
-      ).length;
-      if (alreadyOff >= maxOff) continue;
-
-      autoOff.get(emp.id).add(dateStr);
-    }
+    eligible.slice(0, maxOff).forEach(emp => autoOff.get(emp.id).add(dateStr));
   }
 
   return autoOff;

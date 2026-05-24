@@ -245,7 +245,10 @@ async function renderScheduleTab(branchId) {
           <button class="btn ${viewMode==='preview' ? 'btn-primary' : 'btn-ghost'}" id="toggle-view-btn">
             ${viewMode==='preview' ? '✏️ 편집 모드' : '📋 미리보기'}
           </button>
-          ${viewMode==='edit' ? `<button class="btn btn-ghost" id="auto-assign-btn">★ 자동 배정</button>` : ''}
+          ${viewMode==='edit' ? `
+            <button class="btn btn-ghost" id="auto-assign-btn">★ 자동 배정</button>
+            <button class="btn btn-ghost" id="annual-leave-btn">연차 입력</button>
+          ` : ''}
           <button class="btn ${isPublished ? 'btn-ghost' : 'btn-primary'}" id="publish-btn">
             ${isPublished ? '발행 취소' : '직원에게 발행'}
           </button>
@@ -261,6 +264,29 @@ async function renderScheduleTab(branchId) {
         }
       </div>
       <div id="annual-leave-section" style="margin-top:24px;"></div>
+
+      <div class="modal-overlay" id="al-modal">
+        <div class="modal">
+          <h2>연차 입력</h2>
+          <div class="form-group">
+            <label>직원</label>
+            <select id="al-employee">
+              ${allEmps.map(e => `<option value="${e.id}">${e.name} (${e.role.startsWith('kitchen') ? '주방' : '홀'})</option>`).join('')}
+            </select>
+          </div>
+          <div id="al-remaining" style="font-size:12px;margin-bottom:8px;min-height:18px;"></div>
+          <div class="form-group">
+            <label>날짜</label>
+            <input type="date" id="al-date"
+              min="${year}-${String(month).padStart(2,'0')}-01"
+              max="${new Date(year, month, 0).toISOString().split('T')[0]}" />
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="al-cancel-btn">취소</button>
+            <button class="btn btn-primary" id="al-save-btn">저장</button>
+          </div>
+        </div>
+      </div>
     `;
 
     document.getElementById('toggle-view-btn').addEventListener('click', () => {
@@ -286,6 +312,58 @@ async function renderScheduleTab(branchId) {
         if (!confirm(`${year}년 ${month}월 전체 시프트를 자동 배정할까요?\n• 오픈/마감/홀고정 배정\n• 휴무 자동 분배 (최소 인원 유지)\n\n기존 배정이 모두 덮어씌워집니다.`)) return;
         await autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month });
         render();
+      });
+
+      // ── 연차 입력 모달 ─────────────────────────────────────
+      let alStatsMap = new Map();
+
+      async function openAlModal() {
+        document.getElementById('al-modal').classList.add('open');
+        const stats = await getAnnualLeaveStats(branchId, year);
+        alStatsMap = new Map(stats.map(s => [s.emp.id, s]));
+        updateAlRemaining();
+      }
+
+      function updateAlRemaining() {
+        const empId = document.getElementById('al-employee').value;
+        const stat  = alStatsMap.get(empId);
+        const el2   = document.getElementById('al-remaining');
+        if (stat) {
+          const color = stat.remaining <= 0 ? 'var(--red)' : stat.remaining <= 3 ? '#e65100' : 'var(--olive)';
+          el2.innerHTML = `잔여 <strong style="color:${color};">${stat.remaining}일</strong>
+            <span style="color:var(--gray);">&nbsp;(총 ${stat.total}일 중 ${stat.used}일 사용)</span>`;
+        } else {
+          el2.innerHTML = '<span style="color:var(--gray);">연차 미설정 직원</span>';
+        }
+      }
+
+      document.getElementById('annual-leave-btn').addEventListener('click', openAlModal);
+      document.getElementById('al-employee').addEventListener('change', updateAlRemaining);
+      document.getElementById('al-cancel-btn').addEventListener('click', () => {
+        document.getElementById('al-modal').classList.remove('open');
+      });
+
+      document.getElementById('al-save-btn').addEventListener('click', async () => {
+        const empId = document.getElementById('al-employee').value;
+        const date  = document.getElementById('al-date').value;
+        if (!date) return alert('날짜를 선택하세요.');
+
+        const already = requests.find(r => r.employee_id === empId && r.date === date
+          && ['approved','override_approved'].includes(r.status));
+        if (already) return alert('해당 날짜에 이미 승인된 휴무가 있습니다.');
+
+        const stat = alStatsMap.get(empId);
+        if (stat && stat.remaining <= 0) {
+          if (!confirm('연차 잔여일이 없습니다. 그래도 입력하시겠습니까?')) return;
+        }
+
+        try {
+          await createDayOffRequest({ employeeId: empId, date, type: 'annual', status: 'override_approved' });
+          document.getElementById('al-modal').classList.remove('open');
+          render();
+        } catch (err) {
+          alert('저장 실패: ' + (err.message || err));
+        }
       });
     }
 

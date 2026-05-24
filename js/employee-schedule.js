@@ -7,7 +7,8 @@ async function renderEmployeeScheduleTab(employee, branchId) {
   let month = now.getMonth() + 1;
 
   async function render() {
-    const { data: schedule } = await window.supabase
+    try {
+    const { data: schedule } = await db
       .from('schedules')
       .select('*')
       .eq('branch_id', branchId)
@@ -70,6 +71,9 @@ async function renderEmployeeScheduleTab(employee, branchId) {
     document.getElementById('next-month-es').addEventListener('click', () => {
       ({ year, month } = nextMonth(year, month)); render();
     });
+    } catch (err) {
+      el.innerHTML = `<p style="color:var(--red);padding:16px;">오류가 발생했습니다: ${err?.message || err}</p>`;
+    }
   }
 
   await render();

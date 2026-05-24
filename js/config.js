@@ -1,6 +1,6 @@
 const SUPABASE_URL = 'https://dvmgcmlotytyuebnutoz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2bWdjbWxvdHl0eXVlYm51dG96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NDk3MDgsImV4cCI6MjA5NTEyNTcwOH0.sqMVG0nnWhVipFqIcYFIaTjZSzxUR8vLSxwQ6W8jfZI';
-const ADMIN_PASSWORD = 'ricco2024';
+const ADMIN_PASSWORD = 'ricco3';
 
 const BRANCH_IDS = {
   HANAM: '11111111-1111-1111-1111-111111111111',

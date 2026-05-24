@@ -261,7 +261,7 @@ async function renderScheduleTab(branchId) {
 }
 
 // ── 구역별 휴무 자동 분배 ─────────────────────────────────
-function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekdayMin, weekendMin) {
+function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekdayMin, weekendMin, fullTimeIds = new Set()) {
   if (emps.length === 0) return new Map();
 
   const autoOff = new Map();
@@ -302,6 +302,14 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     if (autoOff.get(empId).has(dateStr)) return false;
     if (monthlyOffs(empId) >= TARGET_OFF) return false;
     if (isWeekend && weekendOffs(empId) >= MAX_WEEKEND_OFF) return false;
+    // 정직원 최소 1명 출근 보장: 이 사람이 쉬면 정직원 전원 휴무가 되는 경우 불가
+    if (fullTimeIds.size > 0 && fullTimeIds.has(empId)) {
+      const offFt = emps.filter(e =>
+        fullTimeIds.has(e.id) &&
+        (approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr))
+      ).length;
+      if (offFt + 1 >= fullTimeIds.size) return false;
+    }
     return true;
   }
 
@@ -346,8 +354,10 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
   const hallWeekdayMin    = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekday')?.min_total || 2;
   const hallWeekendMin    = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekend')?.min_total || 3;
 
+  const hallFullTimeIds = new Set(hallEmps.filter(e => e.employment_type === 'fulltime').map(e => e.id));
+
   const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin);
-  const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin);
+  const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds);
 
   function isOff(emp, dateStr) {
     return approvedOffDates.get(emp.id)?.has(dateStr)

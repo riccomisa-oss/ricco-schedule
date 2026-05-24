@@ -16,14 +16,6 @@ async function renderRequestTab(employee, branchId) {
     const allRequests = await getDayOffRequests(branchId, year, month);
     const approvedAll = allRequests.filter(r => ['approved', 'override_approved'].includes(r.status));
 
-    const approvedMine = myRequests.filter(r => ['approved', 'override_approved'].includes(r.status));
-    const isWeekendDate = d => { const day = new Date(d + 'T00:00:00').getDay(); return day === 0 || day === 6; };
-    const cond = conditions[0] || {};
-
-    const normalUsed  = approvedMine.filter(r => r.type === 'normal').length;
-    const annualUsed  = approvedMine.filter(r => r.type === 'annual').length;
-    const weekendUsed = approvedMine.filter(r => isWeekendDate(r.date)).length;
-
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
         <h2>휴무 신청</h2>
@@ -34,26 +26,11 @@ async function renderRequestTab(employee, branchId) {
         </div>
       </div>
 
-      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-        <div class="card" style="flex:1;min-width:120px;text-align:center;padding:12px;">
-          <div style="font-size:22px;font-weight:700;">${normalUsed}/${cond.max_normal_offs || 8}</div>
-          <div style="font-size:12px;color:var(--gray);">정상 휴무</div>
-        </div>
-        <div class="card" style="flex:1;min-width:120px;text-align:center;padding:12px;">
-          <div style="font-size:22px;font-weight:700;">${annualUsed}/${cond.max_annual_offs || 1}</div>
-          <div style="font-size:12px;color:var(--gray);">연차</div>
-        </div>
-        <div class="card" style="flex:1;min-width:120px;text-align:center;padding:12px;">
-          <div style="font-size:22px;font-weight:700;">${weekendUsed}/${cond.max_weekend_offs || 2}</div>
-          <div style="font-size:12px;color:var(--gray);">주말 휴무</div>
-        </div>
-      </div>
-
       <div id="request-result" style="margin-bottom:12px;"></div>
 
       <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin-bottom:12px;">새 휴무 신청</h3>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <h3 style="margin-bottom:12px;">휴무 신청</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <div class="form-group" style="margin:0;flex:1;min-width:140px;">
             <label>날짜</label>
             <input type="date" id="req-date"
@@ -67,8 +44,8 @@ async function renderRequestTab(employee, branchId) {
               <option value="annual">연차</option>
             </select>
           </div>
-          <button class="btn btn-primary" id="submit-req-btn">신청</button>
         </div>
+        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;margin-top:12px;">신청</button>
       </div>
 
       <div class="card" style="padding:0;">

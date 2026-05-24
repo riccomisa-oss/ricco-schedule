@@ -310,7 +310,7 @@ async function renderScheduleTab(branchId) {
           return;
         }
         if (!confirm(`${year}년 ${month}월 전체 시프트를 자동 배정할까요?\n• 오픈/마감/홀고정 배정\n• 휴무 자동 분배 (최소 인원 유지)\n\n기존 배정이 모두 덮어씌워집니다.`)) return;
-        await autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month });
+        await autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month, branchId });
         render();
       });
 
@@ -528,7 +528,7 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
 }
 
 // ── 전체 자동 배정 ────────────────────────────────────────
-async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month }) {
+async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month, branchId }) {
   const daysInMonth = new Date(year, month, 0).getDate();
 
   const kitchenWeekdayMin = conditions.find(c => c.zone === 'kitchen' && c.day_type === 'weekday')?.min_total || 3;
@@ -541,40 +541,72 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
   const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin);
   const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds);
 
-  // 홀 최대 3인 초과 날은 추가 휴무 강제 배정
-  const MAX_HALL_WORKERS = 3;
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const working = hallEmps.filter(e =>
-      !approvedOffDates.get(e.id)?.has(dateStr) &&
-      !hallAutoOff.get(e.id)?.has(dateStr)
-    );
-    const excess = working.length - MAX_HALL_WORKERS;
-    if (excess <= 0) continue;
+  // ── 초과 인원 강제 휴무 + 연차 자동 배정 ──────────────────
+  // 최소 인원 = 최대 근무 인원. 초과분은 off, 연차 있으면 연차로 처리.
+  const annualStats = await getAnnualLeaveStats(branchId, year);
+  const alRemainingMap     = new Map(annualStats.map(s => [s.emp.id, s.remaining]));
+  const alAssignedThisRun  = new Map([...kitchenEmps, ...hallEmps].map(e => [e.id, 0]));
+  const annualLeaveToCreate = [];
 
-    // 파트타이머 우선, 동순위면 이미 off가 적은 쪽 (많이 일한 쪽에 휴무)
-    const candidates = [...working].sort((a, b) => {
-      const aFt = hallFullTimeIds.has(a.id) ? 1 : 0;
-      const bFt = hallFullTimeIds.has(b.id) ? 1 : 0;
-      if (aFt !== bFt) return aFt - bFt;
-      return (hallAutoOff.get(a.id)?.size || 0) - (hallAutoOff.get(b.id)?.size || 0);
-    });
+  const zones = [
+    { zoneEmps: kitchenEmps, zoneAutoOff: kitchenAutoOff, wdMin: kitchenWeekdayMin, weMin: kitchenWeekendMin, ftIds: new Set() },
+    { zoneEmps: hallEmps,    zoneAutoOff: hallAutoOff,    wdMin: hallWeekdayMin,    weMin: hallWeekendMin,    ftIds: hallFullTimeIds },
+  ];
 
-    const forcedOff = new Set();
-    let forced = 0;
-    for (const emp of candidates) {
-      if (forced >= excess) break;
-      if (hallFullTimeIds.has(emp.id)) {
-        const remainingFt = working.filter(e =>
-          hallFullTimeIds.has(e.id) && e.id !== emp.id && !forcedOff.has(e.id)
-        ).length;
-        if (remainingFt === 0) continue; // 정직원 마지막 1명은 건드리지 않음
+  for (const { zoneEmps, zoneAutoOff, wdMin, weMin, ftIds } of zones) {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr  = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const isWeekend = isHolidayOrWeekend(year, month, day);
+      const maxWork  = isWeekend ? weMin : wdMin;
+
+      const working = zoneEmps.filter(e =>
+        !approvedOffDates.get(e.id)?.has(dateStr) &&
+        !zoneAutoOff.get(e.id)?.has(dateStr)
+      );
+      const excess = working.length - maxWork;
+      if (excess <= 0) continue;
+
+      // 연차 잔여 있는 직원 우선, 그다음 파트타이머, 마지막으로 off가 적은 순
+      const candidates = [...working].sort((a, b) => {
+        const aAL = (alRemainingMap.get(a.id) || 0) - (alAssignedThisRun.get(a.id) || 0) > 0;
+        const bAL = (alRemainingMap.get(b.id) || 0) - (alAssignedThisRun.get(b.id) || 0) > 0;
+        if (aAL !== bAL) return bAL - aAL;
+        const aFt = ftIds.has(a.id) ? 1 : 0;
+        const bFt = ftIds.has(b.id) ? 1 : 0;
+        if (aFt !== bFt) return aFt - bFt;
+        return (zoneAutoOff.get(a.id)?.size || 0) - (zoneAutoOff.get(b.id)?.size || 0);
+      });
+
+      const forcedOff = new Set();
+      let forced = 0;
+      for (const emp of candidates) {
+        if (forced >= excess) break;
+        if (ftIds.has(emp.id)) {
+          const remainFt = working.filter(e =>
+            ftIds.has(e.id) && e.id !== emp.id && !forcedOff.has(e.id)
+          ).length;
+          if (remainFt === 0) continue;
+        }
+        zoneAutoOff.get(emp.id).add(dateStr);
+        forcedOff.add(emp.id);
+        forced++;
+
+        // 연차 잔여 있으면 연차로 기록
+        const alLeft = (alRemainingMap.get(emp.id) || 0) - (alAssignedThisRun.get(emp.id) || 0);
+        if (alLeft > 0 && !approvedOffDates.get(emp.id)?.has(dateStr)) {
+          annualLeaveToCreate.push({ employeeId: emp.id, date: dateStr });
+          alAssignedThisRun.set(emp.id, (alAssignedThisRun.get(emp.id) || 0) + 1);
+        }
       }
-      hallAutoOff.get(emp.id).add(dateStr);
-      forcedOff.add(emp.id);
-      forced++;
     }
   }
+
+  // 연차 요청 일괄 생성 (중복은 조용히 무시)
+  await Promise.all(
+    annualLeaveToCreate.map(({ employeeId, date }) =>
+      createDayOffRequest({ employeeId, date, type: 'annual', status: 'override_approved' }).catch(() => {})
+    )
+  );
 
   function isOff(emp, dateStr) {
     return approvedOffDates.get(emp.id)?.has(dateStr)

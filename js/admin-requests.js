@@ -13,7 +13,16 @@ async function renderRequestsTab(branchId) {
       getConditions(branchId),
     ]);
 
-    const warnings = getConsecutiveWarnings(employees, requests, year, month, conditions);
+    // 배정된 휴무(schedule_entries shift_type='off')도 연속근무 체크에 포함
+    const schedule = await getOrCreateSchedule(branchId, year, month);
+    const entries = await getScheduleEntries(schedule.id);
+    const scheduledOffDates = new Map();
+    entries.filter(e => e.shift_type === 'off').forEach(e => {
+      if (!scheduledOffDates.has(e.employee_id)) scheduledOffDates.set(e.employee_id, new Set());
+      scheduledOffDates.get(e.employee_id).add(e.date);
+    });
+
+    const warnings = getConsecutiveWarnings(employees, requests, year, month, conditions, scheduledOffDates);
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -80,17 +89,18 @@ async function renderRequestsTab(branchId) {
   await render();
 }
 
-function getConsecutiveWarnings(employees, requests, year, month, conditions) {
+function getConsecutiveWarnings(employees, requests, year, month, conditions, scheduledOffDates = new Map()) {
   const maxConsecutive = conditions[0]?.max_consecutive_days || 5;
   const daysInMonth = new Date(year, month, 0).getDate();
   const warnings = [];
 
   employees.forEach(emp => {
-    const offDates = new Set(
-      requests
+    const offDates = new Set([
+      ...requests
         .filter(r => r.employee_id === emp.id && ['approved', 'override_approved'].includes(r.status))
-        .map(r => r.date)
-    );
+        .map(r => r.date),
+      ...(scheduledOffDates.get(emp.id) || []),
+    ]);
 
     let streak = 0;
     let maxStreak = 0;

@@ -374,6 +374,34 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     eligible.slice(0, available).forEach(e => autoOff.get(e.id).add(dateStr));
   }
 
+  // Phase 3: 연속 근무 5일 초과 방지 — 월간 목표 무시하고 강제 휴무 삽입
+  const MAX_CONSECUTIVE = 5;
+  for (const emp of emps) {
+    let streak = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
+      const isEmpOff = approvedOffDates.get(emp.id)?.has(dateStr) || autoOff.get(emp.id).has(dateStr);
+      if (isEmpOff) { streak = 0; continue; }
+      streak++;
+      if (streak <= MAX_CONSECUTIVE) continue;
+
+      // 6번째 연속 근무일 → 휴무 강제 삽입 시도
+      const isWeekend = isHolidayOrWeekend(year, month, day);
+      const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
+      if (alreadyOff(dateStr) >= maxOff) continue; // 최소 인원 미달이면 포기
+      if (isWeekend && weekendOffs(emp.id) >= MAX_WEEKEND_OFF) continue;
+      if (fullTimeIds.size > 0 && fullTimeIds.has(emp.id)) {
+        const offFt = emps.filter(e =>
+          fullTimeIds.has(e.id) &&
+          (approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr))
+        ).length;
+        if (offFt + 1 >= fullTimeIds.size) continue;
+      }
+      autoOff.get(emp.id).add(dateStr);
+      streak = 0;
+    }
+  }
+
   return autoOff;
 }
 

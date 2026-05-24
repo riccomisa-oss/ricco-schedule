@@ -1,3 +1,54 @@
+// ── 한국 공휴일 (토·일 외 공휴일/대체공휴일 포함) ──────────
+const KOREAN_HOLIDAYS = {
+  2025: new Set([
+    '2025-01-01', // 신정
+    '2025-01-28', // 설날 연휴
+    '2025-01-29', // 설날
+    '2025-01-30', // 설날 연휴
+    '2025-03-01', // 삼일절
+    '2025-05-05', // 어린이날
+    '2025-05-06', // 대체공휴일 (부처님오신날·어린이날 겹침)
+    '2025-06-06', // 현충일
+    '2025-08-15', // 광복절
+    '2025-10-03', // 개천절
+    '2025-10-05', // 추석 연휴
+    '2025-10-06', // 추석
+    '2025-10-07', // 추석 연휴
+    '2025-10-08', // 대체공휴일
+    '2025-10-09', // 한글날
+    '2025-12-25', // 크리스마스
+  ]),
+  2026: new Set([
+    '2026-01-01', // 신정
+    '2026-02-16', // 설날 연휴
+    '2026-02-17', // 설날
+    '2026-02-18', // 설날 연휴
+    '2026-03-01', // 삼일절 (일요일)
+    '2026-03-02', // 대체공휴일
+    '2026-05-05', // 어린이날
+    '2026-05-24', // 부처님오신날 (일요일)
+    '2026-05-25', // 대체공휴일
+    '2026-06-06', // 현충일
+    '2026-08-15', // 광복절 (토요일)
+    '2026-08-17', // 대체공휴일
+    '2026-09-24', // 추석 연휴
+    '2026-09-25', // 추석
+    '2026-09-26', // 추석 연휴 (토요일)
+    '2026-09-28', // 대체공휴일
+    '2026-10-03', // 개천절 (토요일)
+    '2026-10-05', // 대체공휴일
+    '2026-10-09', // 한글날
+    '2026-12-25', // 크리스마스
+  ]),
+};
+
+function isHolidayOrWeekend(year, month, day) {
+  const dow = new Date(year, month - 1, day).getDay();
+  if (dow === 0 || dow === 6) return true;
+  const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  return KOREAN_HOLIDAYS[year]?.has(dateStr) ?? false;
+}
+
 async function renderScheduleTab(branchId) {
   const el = document.getElementById('schedule');
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
@@ -52,12 +103,13 @@ async function renderScheduleTab(branchId) {
         days.push({ d, dow: date.getDay() });
       }
 
-      const headerCells = days.map(({ d, dow }) =>
-        `<th style="min-width:36px;text-align:center;font-size:11px;padding:4px 2px;
-          color:${dow === 0 ? '#c62828' : dow === 6 ? '#1565c0' : 'inherit'};">
+      const headerCells = days.map(({ d, dow }) => {
+        const isHoliday = KOREAN_HOLIDAYS[year]?.has(`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+        const color = (dow === 0 || isHoliday) ? '#c62828' : dow === 6 ? '#1565c0' : 'inherit';
+        return `<th style="min-width:36px;text-align:center;font-size:11px;padding:4px 2px;color:${color};">
           ${d}<br><span style="font-weight:400;">${DAY_NAMES[dow]}</span>
-        </th>`
-      ).join('');
+        </th>`;
+      }).join('');
 
       const rows = allEmps.map(emp => {
         const isHall = emp.role.startsWith('hall');
@@ -215,49 +267,71 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
   const autoOff = new Map();
   emps.forEach(e => autoOff.set(e.id, new Set()));
 
-  const TARGET_OFF = 8; // 월 최소 휴무 목표
+  const TARGET_OFF = 8;
   const MAX_WEEKEND_OFF = 2;
   const N = emps.length;
+  const pfx = `${year}-${String(month).padStart(2,'0')}`;
 
-  function countWeekendOffs(empId) {
+  function weekendOffs(empId) {
     let n = 0;
-    autoOff.get(empId)?.forEach(d => {
-      const dow = new Date(d + 'T00:00:00').getDay();
-      if (dow === 0 || dow === 6) n++;
+    autoOff.get(empId).forEach(d => {
+      const [y, m, dd] = d.split('-').map(Number);
+      if (isHolidayOrWeekend(y, m, dd)) n++;
     });
     approvedOffDates.get(empId)?.forEach(d => {
-      const dow = new Date(d + 'T00:00:00').getDay();
-      if (dow === 0 || dow === 6) n++;
+      if (d.startsWith(pfx)) {
+        const [y, m, dd] = d.split('-').map(Number);
+        if (isHolidayOrWeekend(y, m, dd)) n++;
+      }
     });
     return n;
   }
 
-  function totalOff(empId) {
+  function monthlyOffs(empId) {
     let n = autoOff.get(empId).size;
-    approvedOffDates.get(empId)?.forEach(d => {
-      if (d.startsWith(`${year}-${String(month).padStart(2,'0')}`)) n++;
-    });
+    approvedOffDates.get(empId)?.forEach(d => { if (d.startsWith(pfx)) n++; });
     return n;
   }
 
+  function alreadyOff(dateStr) {
+    return emps.filter(e => approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr)).length;
+  }
+
+  function canOff(empId, dateStr, isWeekend) {
+    if (approvedOffDates.get(empId)?.has(dateStr)) return false;
+    if (autoOff.get(empId).has(dateStr)) return false;
+    if (monthlyOffs(empId) >= TARGET_OFF) return false;
+    if (isWeekend && weekendOffs(empId) >= MAX_WEEKEND_OFF) return false;
+    return true;
+  }
+
+  // Phase 1: 순환 배정 — 직원 i는 (i+1)일, (i+1+N)일 … 에 휴무
+  // 이렇게 하면 휴무가 월 전체에 고르게 분산됨
+  for (let i = 0; i < N; i++) {
+    const emp = emps[i];
+    for (let day = i + 1; day <= daysInMonth; day += N) {
+      const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
+      const isWeekend = isHolidayOrWeekend(year, month, day);
+      const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
+      if (!canOff(emp.id, dateStr, isWeekend)) continue;
+      if (alreadyOff(dateStr) >= maxOff) continue;
+      autoOff.get(emp.id).add(dateStr);
+    }
+  }
+
+  // Phase 2: 목표(8일) 미달 직원 보충 — 남은 슬롯에 그리디로 채움
   for (let day = 1; day <= daysInMonth; day++) {
-    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const dow = new Date(year, month - 1, day).getDay();
-    const isWeekend = dow === 0 || dow === 6;
+    const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
+    const isWeekend = isHolidayOrWeekend(year, month, day);
     const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
-    if (maxOff <= 0) continue;
+    const available = maxOff - alreadyOff(dateStr);
+    if (available <= 0) continue;
 
-    // 오늘 휴무 줄 수 있는 직원: 목표 미달 + 주말 한도 미초과 + 승인 휴무 없음
     const eligible = emps
-      .filter(e => {
-        if (approvedOffDates.get(e.id)?.has(dateStr)) return false;
-        if (totalOff(e.id) >= TARGET_OFF) return false;
-        if (isWeekend && countWeekendOffs(e.id) >= MAX_WEEKEND_OFF) return false;
-        return true;
-      })
-      .sort((a, b) => totalOff(a.id) - totalOff(b.id)); // 휴무 적은 사람 우선
+      .filter(e => canOff(e.id, dateStr, isWeekend))
+      .sort((a, b) => monthlyOffs(a.id) - monthlyOffs(b.id));
 
-    eligible.slice(0, maxOff).forEach(emp => autoOff.get(emp.id).add(dateStr));
+    eligible.slice(0, available).forEach(e => autoOff.get(e.id).add(dateStr));
   }
 
   return autoOff;

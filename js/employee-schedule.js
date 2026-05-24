@@ -44,10 +44,10 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         entries.filter(e => e.employee_id === employee.id).map(e => [e.date, e])
       );
 
-      // 날짜별 출근 직원 목록 (본인 제외, off 제외) — role 포함
+      // 날짜별 출근 직원 목록 (off 제외) — role 포함
       const workersByDate = new Map();
       entries
-        .filter(e => e.employee_id !== employee.id && e.shift_type !== 'off')
+        .filter(e => e.shift_type !== 'off')
         .forEach(e => {
           if (!workersByDate.has(e.date)) workersByDate.set(e.date, []);
           workersByDate.get(e.date).push({

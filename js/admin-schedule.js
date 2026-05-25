@@ -252,6 +252,7 @@ async function renderScheduleTab(branchId) {
           <button class="btn ${isPublished ? 'btn-ghost' : 'btn-primary'}" id="publish-btn">
             ${isPublished ? '발행 취소' : '직원에게 발행'}
           </button>
+          ${isPublished ? `<button class="btn btn-ghost btn-sm" id="copy-emp-link-btn">🔗 링크 복사</button>` : ''}
         </div>
       </div>
       <div id="schedule-body">
@@ -264,6 +265,7 @@ async function renderScheduleTab(branchId) {
         }
       </div>
       <div id="annual-leave-section" style="margin-top:24px;"></div>
+      <div id="work-summary-section" style="margin-top:24px;"></div>
 
       <div class="modal-overlay" id="al-modal">
         <div class="modal">
@@ -381,6 +383,54 @@ async function renderScheduleTab(branchId) {
       else await publishSchedule(schedule.id);
       render();
     });
+
+    if (isPublished && document.getElementById('copy-emp-link-btn')) {
+      document.getElementById('copy-emp-link-btn').addEventListener('click', () => {
+        const url = `${window.location.origin}/employee?branch=${branchId}`;
+        navigator.clipboard.writeText(url).then(() => {
+          document.getElementById('copy-emp-link-btn').textContent = '✅ 복사됨!';
+          setTimeout(() => {
+            const btn = document.getElementById('copy-emp-link-btn');
+            if (btn) btn.textContent = '🔗 링크 복사';
+          }, 2000);
+        });
+      });
+    }
+
+    // 월 근무일수 요약 비동기 렌더링
+    getScheduleEntries(schedule.id).then(allEntries => {
+      const summarySection = document.getElementById('work-summary-section');
+      if (!summarySection) return;
+      const allEmps = [...kitchenEmps, ...hallEmps];
+      if (allEmps.length === 0) return;
+
+      const rows = allEmps.map(emp => {
+        const empEntries = allEntries.filter(e => e.employee_id === emp.id);
+        const workDays = empEntries.filter(e => e.shift_type !== 'off').length;
+        const offDays  = empEntries.filter(e => e.shift_type === 'off').length;
+        return { emp, workDays, offDays };
+      });
+
+      summarySection.innerHTML = `
+        <h3 style="margin-bottom:12px;">월 근무일수 요약 (${year}년 ${month}월)</h3>
+        <div class="card" style="padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>이름</th><th>역할</th><th style="text-align:center;">근무일</th><th style="text-align:center;">휴무일</th></tr>
+            </thead>
+            <tbody>
+              ${rows.map(({ emp, workDays, offDays }) => `
+                <tr>
+                  <td>${emp.name}</td>
+                  <td style="font-size:12px;color:var(--gray);">${emp.role.startsWith('kitchen') ? '주방' : '홀'} ${emp.employment_type === 'fulltime' ? '정직원' : '파트'}</td>
+                  <td style="text-align:center;font-weight:700;">${workDays}일</td>
+                  <td style="text-align:center;color:var(--gray);">${offDays}일</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }).catch(() => {});
 
     // 연차 현황 비동기 렌더링
     getAnnualLeaveStats(branchId, year).then(stats => {

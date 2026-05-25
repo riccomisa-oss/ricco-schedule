@@ -154,6 +154,11 @@ async function overrideDayOffRequest(id, newStatus) {
   if (error) throw error;
 }
 
+async function deleteDayOffRequest(id) {
+  const { error } = await db.from('day_off_requests').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ── Schedules ─────────────────────────────────────────────
 async function getOrCreateSchedule(branchId, year, month) {
   const { data: existing } = await db

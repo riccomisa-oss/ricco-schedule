@@ -7,14 +7,24 @@ async function renderRequestTab(employee, branchId) {
   let month = now.getMonth() + 1;
 
   async function render() {
-    const [allEmployees, conditions, myRequests] = await Promise.all([
+    const [allEmployees, conditions, myRequests, annualStats] = await Promise.all([
       getEmployees(branchId),
       getConditions(branchId),
       getEmployeeDayOffRequests(employee.id, year, month),
+      getAnnualLeaveStats(branchId, year),
     ]);
 
     const allRequests = await getDayOffRequests(branchId, year, month);
     const approvedAll = allRequests.filter(r => ['approved', 'override_approved'].includes(r.status));
+
+    // 연차 잔여일
+    const myStat = annualStats.find(s => s.emp.id === employee.id);
+    const annualBadge = myStat
+      ? `<div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray);">
+           연차 잔여 <strong style="color:var(--olive);font-size:16px;">${myStat.remaining}일</strong>
+           <span style="font-size:11px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+         </div>`
+      : '';
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
@@ -25,6 +35,8 @@ async function renderRequestTab(employee, branchId) {
           <button class="btn btn-ghost btn-sm" id="next-month-emp">▶</button>
         </div>
       </div>
+
+      ${annualBadge ? `<div class="card" style="margin-bottom:12px;padding:12px 16px;">${annualBadge}</div>` : ''}
 
       <div id="request-result" style="margin-bottom:12px;"></div>
 
@@ -49,25 +61,41 @@ async function renderRequestTab(employee, branchId) {
 
       <div class="card" style="padding:0;">
         <table class="data-table">
-          <thead><tr><th>날짜</th><th>유형</th><th>신청 시각</th><th>결과</th><th>사유</th></tr></thead>
+          <thead><tr><th>날짜</th><th>유형</th><th>신청 시각</th><th>결과</th><th></th></tr></thead>
           <tbody>
             ${myRequests.length === 0
               ? '<tr><td colspan="5" style="text-align:center;color:var(--gray);">신청 내역이 없습니다.</td></tr>'
-              : myRequests.map(r => `
-                <tr>
-                  <td>${r.date}</td>
-                  <td>${r.type === 'normal' ? '정상 휴무' : '연차'}</td>
-                  <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
-                  <td><span class="badge badge-${['approved','override_approved'].includes(r.status) ? 'approved' : 'rejected'}">
-                    ${['approved','override_approved'].includes(r.status) ? '승인' : '거절'}
-                  </span></td>
-                  <td style="font-size:12px;color:var(--gray);">${r.rejection_reason || '-'}</td>
-                </tr>`).join('')
+              : myRequests.map(r => {
+                  const isApproved = ['approved', 'override_approved'].includes(r.status);
+                  const canCancel  = !['override_approved', 'override_rejected'].includes(r.status);
+                  return `
+                    <tr>
+                      <td>${r.date}</td>
+                      <td>${r.type === 'normal' ? '정상 휴무' : '연차'}</td>
+                      <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
+                      <td><span class="badge badge-${isApproved ? 'approved' : 'rejected'}">
+                        ${isApproved ? '승인' : '거절'}
+                      </span></td>
+                      <td>${canCancel
+                        ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="cancelRequest('${r.id}')">취소</button>`
+                        : ''}</td>
+                    </tr>`;
+                }).join('')
             }
           </tbody>
         </table>
       </div>
     `;
+
+    window.cancelRequest = async (id) => {
+      if (!confirm('휴무 신청을 취소하시겠습니까?')) return;
+      try {
+        await deleteDayOffRequest(id);
+        render();
+      } catch (err) {
+        alert('취소 실패: ' + (err?.message || err));
+      }
+    };
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
       ({ year, month } = prevMonth(year, month)); render();

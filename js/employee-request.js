@@ -42,13 +42,14 @@ async function renderRequestTab(employee, branchId) {
 
       <div class="card" style="margin-bottom:16px;">
         <h3 style="margin-bottom:12px;">휴무 신청</h3>
-        <div class="form-group" style="margin:0 0 8px 0;">
+        <div class="form-group" style="margin:0 0 4px 0;">
           <label>날짜</label>
           <input type="date" id="req-date"
             min="${year}-${String(month).padStart(2,'0')}-01"
             max="${new Date(year, month, 0).toISOString().split('T')[0]}"
             style="width:100%;box-sizing:border-box;" />
         </div>
+        <div id="date-off-info" style="font-size:12px;color:var(--gray);min-height:18px;margin-bottom:8px;"></div>
         <div class="form-group" style="margin:0 0 12px 0;">
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
@@ -96,6 +97,18 @@ async function renderRequestTab(employee, branchId) {
         alert('취소 실패: ' + (err?.message || err));
       }
     };
+
+    document.getElementById('req-date').addEventListener('change', (e) => {
+      const selectedDate = e.target.value;
+      const infoEl = document.getElementById('date-off-info');
+      if (!selectedDate || !infoEl) return;
+      const offNames = approvedAll
+        .filter(r => r.date === selectedDate && r.employee_id !== employee.id)
+        .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
+      infoEl.textContent = offNames.length
+        ? `이 날 이미 휴무: ${offNames.join(', ')}`
+        : '';
+    });
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
       ({ year, month } = prevMonth(year, month)); render();

@@ -40,11 +40,10 @@ async function renderEmployeeScheduleTab(employee, branchId) {
 
       const entries = await getScheduleEntries(schedule.id);
 
-      const myEntryMap = new Map(
-        entries.filter(e => e.employee_id === employee.id).map(e => [e.date, e])
-      );
+      const myEntries = entries.filter(e => e.employee_id === employee.id);
+      const myEntryMap = new Map(myEntries.map(e => [e.date, e]));
 
-      // 날짜별 출근 직원 목록 (off 제외) — role 포함
+      // 날짜별 출근 직원 목록 (off 제외)
       const workersByDate = new Map();
       entries
         .filter(e => e.shift_type !== 'off')
@@ -55,6 +54,50 @@ async function renderEmployeeScheduleTab(employee, branchId) {
             role: e.employees?.role || '',
           });
         });
+
+      // ── 오늘 출근 인원 (이번달만 표시) ─────────────────────
+      const isThisMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      let todaySection = '';
+      if (isThisMonth) {
+        const todayWorkers = workersByDate.get(todayStr) || [];
+        const myTodayEntry = myEntryMap.get(todayStr);
+        const isMyDayOff = myTodayEntry?.shift_type === 'off';
+
+        const kitchen = todayWorkers.filter(w => w.role.startsWith('kitchen')).map(w => w.name);
+        const hall    = todayWorkers.filter(w => w.role.startsWith('hall')).map(w => w.name);
+
+        if (isMyDayOff) {
+          todaySection = `
+            <div class="card" style="margin-bottom:16px;background:#FFF9F9;border-left:3px solid var(--red);padding:14px 16px;">
+              <div style="font-weight:600;margin-bottom:6px;">오늘 — 휴무 🌿</div>
+              ${kitchen.length ? `<div style="font-size:13px;color:var(--gray);">주방: ${kitchen.join(', ')}</div>` : ''}
+              ${hall.length    ? `<div style="font-size:13px;color:var(--gray);">홀: ${hall.join(', ')}</div>` : ''}
+            </div>`;
+        } else if (todayWorkers.length > 0) {
+          todaySection = `
+            <div class="card" style="margin-bottom:16px;background:#F1F8E9;border-left:3px solid var(--olive);padding:14px 16px;">
+              <div style="font-weight:600;margin-bottom:6px;">오늘 출근 인원</div>
+              ${kitchen.length ? `<div style="font-size:13px;">주방: ${kitchen.join(', ')}</div>` : ''}
+              ${hall.length    ? `<div style="font-size:13px;">홀: ${hall.join(', ')}</div>` : ''}
+            </div>`;
+        }
+      }
+
+      // ── 이번달 근무일수 요약 ──────────────────────────────
+      const workDays = myEntries.filter(e => e.shift_type !== 'off').length;
+      const offDays  = myEntries.filter(e => e.shift_type === 'off').length;
+      const summarySection = `
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+          <div class="card" style="flex:1;text-align:center;padding:10px;">
+            <div style="font-size:20px;font-weight:700;">${workDays}일</div>
+            <div style="font-size:11px;color:var(--gray);">근무</div>
+          </div>
+          <div class="card" style="flex:1;text-align:center;padding:10px;">
+            <div style="font-size:20px;font-weight:700;">${offDays}일</div>
+            <div style="font-size:11px;color:var(--gray);">휴무</div>
+          </div>
+        </div>`;
 
       const nameStyle = 'font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block;';
       const groupLabel = 'font-size:9px;color:var(--gray);margin-top:3px;margin-bottom:1px;';
@@ -69,7 +112,6 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         if (myEntry?.shift_type === 'off') {
           html += '<span class="shift-chip off">휴무</span>';
         }
-
         if (kitchen.length > 0) {
           html += `<div style="${groupLabel}">주방</div>`;
           html += kitchen.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
@@ -78,7 +120,6 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           html += `<div style="${groupLabel}">홀</div>`;
           html += hall.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
         }
-
         return html;
       }
 
@@ -91,6 +132,8 @@ async function renderEmployeeScheduleTab(employee, branchId) {
             <button class="btn btn-ghost btn-sm" id="next-month-es">▶</button>
           </div>
         </div>
+        ${todaySection}
+        ${summarySection}
         <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>
       `;
 

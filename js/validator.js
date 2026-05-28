@@ -39,14 +39,10 @@ function validateDayOffRequest({ employee, date, type, allEmployees, approvedReq
     }
   }
 
-  // 조건 4: 연차 월 최대
+  // 조건 4: 연차는 annual_leave_total 설정된 직원만
   if (type === 'annual') {
-    const cond = conditions.find(c => c.zone === zone);
-    if (cond) {
-      const count = myApproved.filter(r => r.type === 'annual').length;
-      if (count >= cond.max_annual_offs) {
-        return { approved: false, reason: `연차는 월 최대 ${cond.max_annual_offs}회까지 가능합니다. (현재 ${count}회 사용)` };
-      }
+    if (employee.annual_leave_total == null) {
+      return { approved: false, reason: '연차 사용이 설정되지 않은 직원입니다.' };
     }
   }
 

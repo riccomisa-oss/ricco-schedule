@@ -54,7 +54,7 @@ async function renderRequestTab(employee, branchId) {
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
             <option value="normal">정상 휴무</option>
-            <option value="annual">연차</option>
+            ${employee.annual_leave_total != null ? '<option value="annual">연차</option>' : ''}
           </select>
         </div>
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>

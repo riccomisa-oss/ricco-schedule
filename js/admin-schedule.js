@@ -425,24 +425,28 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
   const autoOff = new Map();
   emps.forEach(e => autoOff.set(e.id, new Set()));
 
-  const TARGET_OFF = 8;
-  const MAX_WEEKEND_OFF = 2;
+  const OFF_PER_WEEK = 2; // 1주에 2일 휴무
   const N = emps.length;
   const pfx = `${year}-${String(month).padStart(2,'0')}`;
 
-  function weekendOffs(empId) {
-    let n = 0;
-    autoOff.get(empId).forEach(d => {
-      const [y, m, dd] = d.split('-').map(Number);
-      if (isHolidayOrWeekend(y, m, dd)) n++;
-    });
-    approvedOffDates.get(empId)?.forEach(d => {
-      if (d.startsWith(pfx)) {
-        const [y, m, dd] = d.split('-').map(Number);
-        if (isHolidayOrWeekend(y, m, dd)) n++;
-      }
-    });
-    return n;
+  // 달력 주(일~토) 단위로 분리
+  const weeks = [];
+  let currentWeek = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    currentWeek.push(d);
+    const dow = new Date(year, month - 1, d).getDay();
+    if (dow === 6 || d === daysInMonth) { weeks.push([...currentWeek]); currentWeek = []; }
+  }
+
+  // 월간 목표 = 주별 합산
+  const monthlyTarget = weeks.reduce((sum, w) =>
+    sum + Math.round(w.length * OFF_PER_WEEK / 7), 0);
+
+  function weeklyOffs(empId, weekDays) {
+    return weekDays.filter(d => {
+      const ds = `${pfx}-${String(d).padStart(2,'0')}`;
+      return approvedOffDates.get(empId)?.has(ds) || autoOff.get(empId).has(ds);
+    }).length;
   }
 
   function monthlyOffs(empId) {
@@ -452,15 +456,15 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
   }
 
   function alreadyOff(dateStr) {
-    return emps.filter(e => approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr)).length;
+    return emps.filter(e =>
+      approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr)
+    ).length;
   }
 
-  function canOff(empId, dateStr, isWeekend) {
+  function canOff(empId, dateStr) {
     if (approvedOffDates.get(empId)?.has(dateStr)) return false;
     if (autoOff.get(empId).has(dateStr)) return false;
-    if (monthlyOffs(empId) >= TARGET_OFF) return false;
-    if (isWeekend && weekendOffs(empId) >= MAX_WEEKEND_OFF) return false;
-    // 정직원 최소 1명 출근 보장: 이 사람이 쉬면 정직원 전원 휴무가 되는 경우 불가
+    // 정직원 최소 1명 출근 보장
     if (fullTimeIds.size > 0 && fullTimeIds.has(empId)) {
       const offFt = emps.filter(e =>
         fullTimeIds.has(e.id) &&
@@ -471,21 +475,38 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     return true;
   }
 
-  // Phase 1: 순환 배정 — 직원 i는 (i+1)일, (i+1+N)일 … 에 휴무
-  // 이렇게 하면 휴무가 월 전체에 고르게 분산됨
-  for (let i = 0; i < N; i++) {
-    const emp = emps[i];
-    for (let day = i + 1; day <= daysInMonth; day += N) {
-      const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
-      const isWeekend = isHolidayOrWeekend(year, month, day);
-      const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
-      if (!canOff(emp.id, dateStr, isWeekend)) continue;
-      if (alreadyOff(dateStr) >= maxOff) continue;
-      autoOff.get(emp.id).add(dateStr);
-    }
-  }
+  // Phase 1: 주 단위 배정 — 매주 직원별 2일 휴무 확보
+  weeks.forEach((week, weekIdx) => {
+    const weekTarget = Math.round(week.length * OFF_PER_WEEK / 7); // 전체주=2, 짧은 부분주=1
+    // 주마다 시작 직원을 순환하여 공평하게
+    const rotated = [...emps.slice(weekIdx % N), ...emps.slice(0, weekIdx % N)];
 
-  // Phase 2: 목표(8일) 미달 직원 보충 — 남은 슬롯에 그리디로 채움
+    rotated.forEach(emp => {
+      const alreadyThisWeek = weeklyOffs(emp.id, week);
+      const needed = Math.max(0, weekTarget - alreadyThisWeek);
+      let assigned = 0;
+
+      // 평일 우선 → 주말 순서로 시도 (공휴일 포함 주말은 나중에)
+      const sorted = [...week].sort((a, b) => {
+        const aW = isHolidayOrWeekend(year, month, a) ? 1 : 0;
+        const bW = isHolidayOrWeekend(year, month, b) ? 1 : 0;
+        return aW - bW;
+      });
+
+      for (const d of sorted) {
+        if (assigned >= needed) break;
+        const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+        const isWeekend = isHolidayOrWeekend(year, month, d);
+        const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
+        if (!canOff(emp.id, dateStr)) continue;
+        if (alreadyOff(dateStr) >= maxOff) continue;
+        autoOff.get(emp.id).add(dateStr);
+        assigned++;
+      }
+    });
+  });
+
+  // Phase 2: 월간 목표 미달 직원 보충 (주 배정에서 못 채운 경우)
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
     const isWeekend = isHolidayOrWeekend(year, month, day);
@@ -494,13 +515,13 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     if (available <= 0) continue;
 
     const eligible = emps
-      .filter(e => canOff(e.id, dateStr, isWeekend))
+      .filter(e => canOff(e.id, dateStr) && monthlyOffs(e.id) < monthlyTarget)
       .sort((a, b) => monthlyOffs(a.id) - monthlyOffs(b.id));
 
     eligible.slice(0, available).forEach(e => autoOff.get(e.id).add(dateStr));
   }
 
-  // Phase 3: 연속 근무 5일 초과 방지 — 월간 목표 무시하고 강제 휴무 삽입
+  // Phase 3: 연속 근무 5일 초과 방지 — 강제 휴무 삽입
   const MAX_CONSECUTIVE = 5;
   for (const emp of emps) {
     let streak = 0;
@@ -511,18 +532,10 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
       streak++;
       if (streak <= MAX_CONSECUTIVE) continue;
 
-      // 6번째 연속 근무일 → 휴무 강제 삽입 시도
       const isWeekend = isHolidayOrWeekend(year, month, day);
       const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
-      if (alreadyOff(dateStr) >= maxOff) continue; // 최소 인원 미달이면 포기
-      if (isWeekend && weekendOffs(emp.id) >= MAX_WEEKEND_OFF) continue;
-      if (fullTimeIds.size > 0 && fullTimeIds.has(emp.id)) {
-        const offFt = emps.filter(e =>
-          fullTimeIds.has(e.id) &&
-          (approvedOffDates.get(e.id)?.has(dateStr) || autoOff.get(e.id).has(dateStr))
-        ).length;
-        if (offFt + 1 >= fullTimeIds.size) continue;
-      }
+      if (alreadyOff(dateStr) >= maxOff) continue;
+      if (!canOff(emp.id, dateStr)) continue;
       autoOff.get(emp.id).add(dateStr);
       streak = 0;
     }

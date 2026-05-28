@@ -62,16 +62,20 @@ async function renderScheduleTab(branchId) {
 
       function shiftCell(emp, d) {
         const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+        // schedule_entries 우선 표시 (자동 배정 결과)
+        const entry = entryMap.get(`${emp.id}_${dateStr}`);
+        const shift = entry?.shift_type;
+        if (shift) {
+          const s = SHIFT_COLORS[shift] || {};
+          return `<td style="background:${s.bg};text-align:center;padding:6px 2px;">
+            <span style="font-size:13px;color:${s.color};font-weight:700;">${s.label}</span></td>`;
+        }
+        // schedule_entries 없을 때만 휴무 신청 표시
         if (approvedOffDates.get(emp.id)?.has(dateStr)) {
           return `<td style="background:#fff3e0;text-align:center;padding:6px 2px;">
             <span style="font-size:12px;color:#e65100;font-weight:600;">휴신청</span></td>`;
         }
-        const entry = entryMap.get(`${emp.id}_${dateStr}`);
-        const shift = entry?.shift_type;
-        if (!shift) return `<td style="text-align:center;color:#ddd;">—</td>`;
-        const s = SHIFT_COLORS[shift] || {};
-        return `<td style="background:${s.bg};text-align:center;padding:6px 2px;">
-          <span style="font-size:13px;color:${s.color};font-weight:700;">${s.label}</span></td>`;
+        return `<td style="text-align:center;color:#ddd;">—</td>`;
       }
 
       // 직원별 월간 주말·공휴일 휴무 총계 (승인 휴무 신청 + 배정 off 포함)

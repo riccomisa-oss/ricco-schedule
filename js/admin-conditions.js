@@ -46,17 +46,15 @@ async function renderConditionsTab(branchId) {
       <div class="card">
         <h3 style="margin-bottom:12px;">홀 — 평일</h3>
         <table class="data-table">
-          ${row('최소 총 인원',  'weekday','hall','min_total',    byKey['weekday_hall']?.min_total    ?? 2)}
-          ${row('정직원 최소',   'weekday','hall','min_fulltime', byKey['weekday_hall']?.min_fulltime ?? 1)}
-          ${row('파트타임 최소', 'weekday','hall','min_parttime', byKey['weekday_hall']?.min_parttime ?? 1)}
+          ${row('최소 총 인원', 'weekday','hall','min_total',    byKey['weekday_hall']?.min_total    ?? 2)}
+          ${row('정직원 최소',  'weekday','hall','min_fulltime', byKey['weekday_hall']?.min_fulltime ?? 1)}
         </table>
       </div>
       <div class="card">
         <h3 style="margin-bottom:12px;">홀 — 주말</h3>
         <table class="data-table">
-          ${row('최소 총 인원',  'weekend','hall','min_total',    byKey['weekend_hall']?.min_total    ?? 3)}
-          ${row('정직원 최소',   'weekend','hall','min_fulltime', byKey['weekend_hall']?.min_fulltime ?? 1)}
-          ${row('파트타임 최소', 'weekend','hall','min_parttime', byKey['weekend_hall']?.min_parttime ?? 2)}
+          ${row('최소 총 인원', 'weekend','hall','min_total',    byKey['weekend_hall']?.min_total    ?? 3)}
+          ${row('정직원 최소',  'weekend','hall','min_fulltime', byKey['weekend_hall']?.min_fulltime ?? 1)}
         </table>
       </div>
       <div class="card" style="grid-column:1/-1;">

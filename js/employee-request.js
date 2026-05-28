@@ -54,7 +54,7 @@ async function renderRequestTab(employee, branchId) {
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
             <option value="normal">정상 휴무</option>
-            ${employee.annual_leave_total != null ? '<option value="annual">연차</option>' : ''}
+            ${employee.annual_leave_total != null ? '<option value="annual">연차 휴무</option>' : ''}
           </select>
         </div>
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
@@ -72,7 +72,7 @@ async function renderRequestTab(employee, branchId) {
                   return `
                     <tr>
                       <td>${r.date}</td>
-                      <td>${r.type === 'normal' ? '정상 휴무' : '연차'}</td>
+                      <td>${r.type === 'normal' ? '정상 휴무' : '연차 휴무'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
                       <td><span class="badge badge-${isApproved ? 'approved' : 'rejected'}">
                         ${isApproved ? '승인' : '거절'}

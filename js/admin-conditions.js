@@ -63,7 +63,7 @@ async function renderConditionsTab(branchId) {
         <h3 style="margin-bottom:12px;">공통 한도 (모든 직원)</h3>
         <table class="data-table">
           ${row('주말 휴무 월 최대',   'weekday','kitchen','max_weekend_offs',     byKey['weekday_kitchen']?.max_weekend_offs     ?? 2)}
-          ${row('연속 근무 최대 일수', 'weekday','kitchen','max_consecutive_days', byKey['weekday_kitchen']?.max_consecutive_days ?? 5)}
+          ${row('연속 근무 최대 일수', 'weekday','kitchen','max_consecutive_days', byKey['weekday_kitchen']?.max_consecutive_days ?? 4)}
         </table>
         <p style="font-size:12px;color:var(--gray);margin-top:8px;">※ 공통 한도 변경 시 모든 구역 조건에 동일하게 적용됩니다.</p>
       </div>

@@ -419,7 +419,7 @@ async function renderScheduleTab(branchId) {
 }
 
 // ── 구역별 휴무 자동 분배 ─────────────────────────────────
-function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekdayMin, weekendMin, fullTimeIds = new Set()) {
+function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekdayMin, weekendMin, fullTimeIds = new Set(), maxConsecutive = 4) {
   if (emps.length === 0) return new Map();
 
   const autoOff = new Map();
@@ -521,8 +521,7 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     eligible.slice(0, available).forEach(e => autoOff.get(e.id).add(dateStr));
   }
 
-  // Phase 3: 연속 근무 5일 초과 방지 — 강제 휴무 삽입
-  const MAX_CONSECUTIVE = 5;
+  // Phase 3: 연속 근무 초과 방지 — 강제 휴무 삽입
   for (const emp of emps) {
     let streak = 0;
     for (let day = 1; day <= daysInMonth; day++) {
@@ -530,7 +529,7 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
       const isEmpOff = approvedOffDates.get(emp.id)?.has(dateStr) || autoOff.get(emp.id).has(dateStr);
       if (isEmpOff) { streak = 0; continue; }
       streak++;
-      if (streak <= MAX_CONSECUTIVE) continue;
+      if (streak <= maxConsecutive) continue;
 
       const isWeekend = isHolidayOrWeekend(year, month, day);
       const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
@@ -548,15 +547,16 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
 async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEmps, approvedOffDates, conditions, year, month, branchId }) {
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  const kitchenWeekdayMin = conditions.find(c => c.zone === 'kitchen' && c.day_type === 'weekday')?.min_total || 3;
-  const kitchenWeekendMin = conditions.find(c => c.zone === 'kitchen' && c.day_type === 'weekend')?.min_total || 4;
-  const hallWeekdayMin    = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekday')?.min_total || 2;
-  const hallWeekendMin    = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekend')?.min_total || 3;
+  const kitchenWeekdayMin  = conditions.find(c => c.zone === 'kitchen' && c.day_type === 'weekday')?.min_total || 3;
+  const kitchenWeekendMin  = conditions.find(c => c.zone === 'kitchen' && c.day_type === 'weekend')?.min_total || 4;
+  const hallWeekdayMin     = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekday')?.min_total || 2;
+  const hallWeekendMin     = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekend')?.min_total || 3;
+  const maxConsecutive     = conditions.find(c => c.max_consecutive_days != null)?.max_consecutive_days ?? 4;
 
   const hallFullTimeIds = new Set(hallEmps.filter(e => e.employment_type === 'fulltime').map(e => e.id));
 
-  const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin);
-  const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds);
+  const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin, new Set(), maxConsecutive);
+  const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds, maxConsecutive);
 
   // ── 초과 인원 강제 휴무 + 연차 자동 배정 ──────────────────
   // 최소 인원 = 최대 근무 인원. 초과분은 off, 연차 있으면 연차로 처리.

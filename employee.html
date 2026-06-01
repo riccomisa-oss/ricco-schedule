@@ -13,11 +13,22 @@
   <span id="branch-label"></span>
 </header>
 
-<div id="name-select-screen" style="display:flex;align-items:center;justify-content:center;min-height:80vh;">
+<div id="branch-select-screen" style="display:flex;align-items:center;justify-content:center;min-height:80vh;">
+  <div class="card" style="width:360px;">
+    <h2 style="margin-bottom:24px;text-align:center;">지점을 선택하세요</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <button class="btn btn-primary" style="padding:18px;font-size:16px;" data-branch-id="11111111-1111-1111-1111-111111111111">하남미사 본점</button>
+      <button class="btn btn-primary" style="padding:18px;font-size:16px;" data-branch-id="22222222-2222-2222-2222-222222222222">분당미금점</button>
+    </div>
+  </div>
+</div>
+
+<div id="name-select-screen" style="display:none;align-items:center;justify-content:center;min-height:80vh;">
   <div class="card" style="width:360px;">
     <h2 style="margin-bottom:16px;text-align:center;">본인 이름을 선택하세요</h2>
     <div id="name-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
     <p id="name-error" style="color:#C62828;margin-top:10px;font-size:13px;text-align:center;"></p>
+    <button class="btn btn-ghost btn-sm" style="margin-top:16px;width:100%;color:var(--gray);" id="back-to-branch-btn">← 지점 변경</button>
   </div>
 </div>
 
@@ -44,24 +55,33 @@
 <script src="js/employee-request.js"></script>
 <script src="js/employee-schedule.js"></script>
 <script>
-  const params = new URLSearchParams(window.location.search);
-  const branchId = params.get('branch') || BRANCH_IDS.HANAM;
+  let currentBranchId = null;
   let selectedEmployee = null;
 
-  async function initEmployee() {
-    const branches = await getBranches();
-    const branch = branches.find(b => b.id === branchId);
-    document.getElementById('branch-label').textContent = branch?.name || '';
+  // 지점 선택
+  document.querySelectorAll('[data-branch-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      currentBranchId = btn.dataset.branchId;
+      const branches = await getBranches();
+      const branch = branches.find(b => b.id === currentBranchId);
+      document.getElementById('branch-label').textContent = branch?.name || '';
 
-    const employees = await getEmployees(branchId);
+      document.getElementById('branch-select-screen').style.display = 'none';
+      await loadNameList();
+      document.getElementById('name-select-screen').style.display = 'flex';
+    });
+  });
+
+  async function loadNameList() {
+    const employees = await getEmployees(currentBranchId);
+    const fulltime = employees.filter(e => e.employment_type !== 'parttime');
     const list = document.getElementById('name-list');
-    list.innerHTML = employees.map(e => `
+    list.innerHTML = fulltime.map(e => `
       <button class="btn btn-ghost" style="text-align:center;" data-emp-id="${e.id}">${e.name}</button>
     `).join('');
-
     list.querySelectorAll('button').forEach(btn => {
       btn.addEventListener('click', () => {
-        selectedEmployee = employees.find(e => e.id === btn.dataset.empId);
+        selectedEmployee = fulltime.find(e => e.id === btn.dataset.empId);
         selectEmployee();
       });
     });
@@ -71,7 +91,7 @@
     document.getElementById('name-select-screen').style.display = 'none';
     document.getElementById('employee-app').style.display = 'block';
     document.getElementById('selected-name').textContent = selectedEmployee.name;
-    renderRequestTab(selectedEmployee, branchId);
+    renderRequestTab(selectedEmployee, currentBranchId);
   }
 
   document.getElementById('change-name-btn').addEventListener('click', () => {
@@ -80,18 +100,23 @@
     selectedEmployee = null;
   });
 
+  document.getElementById('back-to-branch-btn').addEventListener('click', () => {
+    document.getElementById('name-select-screen').style.display = 'none';
+    document.getElementById('branch-select-screen').style.display = 'flex';
+    document.getElementById('branch-label').textContent = '';
+    currentBranchId = null;
+  });
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(btn.dataset.tab).classList.add('active');
-      if (btn.dataset.tab === 'emp-schedule') renderEmployeeScheduleTab(selectedEmployee, branchId);
-      if (btn.dataset.tab === 'emp-request')  renderRequestTab(selectedEmployee, branchId);
+      if (btn.dataset.tab === 'emp-schedule') renderEmployeeScheduleTab(selectedEmployee, currentBranchId);
+      if (btn.dataset.tab === 'emp-request')  renderRequestTab(selectedEmployee, currentBranchId);
     });
   });
-
-  initEmployee();
 </script>
 </body>
 </html>

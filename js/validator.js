@@ -28,10 +28,10 @@ function validateDayOffRequest({ employee, date, type, allEmployees, approvedReq
          isSameMonth(r.date, year, month)
   );
 
-  // 조건 3: 정상 휴무 월 최대
+  // 조건 3: 정상 휴무 월 최대 (99 이상이면 무제한)
   if (type === 'normal') {
     const cond = conditions.find(c => c.zone === zone);
-    if (cond) {
+    if (cond && cond.max_normal_offs < 99) {
       const count = myApproved.filter(r => r.type === 'normal').length;
       if (count >= cond.max_normal_offs) {
         return { approved: false, reason: `정상 휴무는 월 최대 ${cond.max_normal_offs}회까지 가능합니다. (현재 ${count}회 사용)` };

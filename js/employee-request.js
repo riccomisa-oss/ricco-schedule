@@ -78,7 +78,7 @@ async function renderRequestTab(employee, branchId) {
                         ${isApproved ? '승인' : '거절'}
                       </span></td>
                       <td>${canCancel
-                        ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="cancelRequest('${r.id}')">취소</button>`
+                        ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="cancelRequest('${r.id}','${r.type}','${r.date}')">취소</button>`
                         : ''}</td>
                     </tr>`;
                 }).join('')
@@ -88,10 +88,13 @@ async function renderRequestTab(employee, branchId) {
       </div>
     `;
 
-    window.cancelRequest = async (id) => {
+    window.cancelRequest = async (id, type, date) => {
       if (!confirm('휴무 신청을 취소하시겠습니까?')) return;
       try {
         await deleteDayOffRequest(id);
+        if (type === 'annual') {
+          await deleteLedgerUsageByDate(employee.id, date);
+        }
         render();
       } catch (err) {
         alert('취소 실패: ' + (err?.message || err));

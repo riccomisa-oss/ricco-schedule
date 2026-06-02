@@ -242,3 +242,15 @@ async function deleteLedgerEntry(id) {
   const { error } = await db.from('annual_leave_ledger').delete().eq('id', id);
   if (error) throw error;
 }
+
+async function deleteLedgerUsageByDate(employeeId, date) {
+  const { data, error } = await db
+    .from('annual_leave_ledger')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .eq('date', date)
+    .eq('type', 'usage')
+    .limit(1);
+  if (error) throw error;
+  if (data && data.length > 0) await deleteLedgerEntry(data[0].id);
+}

@@ -14,8 +14,8 @@ async function renderRequestsTab(branchId) {
     ]);
 
     // 배정된 휴무(schedule_entries shift_type='off')도 연속근무 체크에 포함
-    const schedule = await getOrCreateSchedule(branchId, year, month);
-    const entries = await getScheduleEntries(schedule.id);
+    const schedule = await getScheduleIfExists(branchId, year, month);
+    const entries = schedule ? await getScheduleEntries(schedule.id) : [];
     const scheduledOffDates = new Map();
     entries.filter(e => e.shift_type === 'off').forEach(e => {
       if (!scheduledOffDates.has(e.employee_id)) scheduledOffDates.set(e.employee_id, new Set());
@@ -93,7 +93,10 @@ async function renderRequestsTab(branchId) {
       deleteAllBtn.addEventListener('click', async () => {
         const annualReqs = requests.filter(r => r.type === 'annual');
         if (!confirm(`${year}년 ${month}월 연차 신청 ${annualReqs.length}건을 전체 삭제하시겠습니까?`)) return;
-        await Promise.all(annualReqs.map(r => deleteDayOffRequest(r.id)));
+        await Promise.all(annualReqs.flatMap(r => [
+          deleteDayOffRequest(r.id),
+          deleteLedgerUsageByDate(r.employee_id, r.date),
+        ]));
         render();
       });
     }

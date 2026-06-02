@@ -62,7 +62,7 @@ async function getAnnualLeaveStats(branchId, year) {
 
   const { data: entries, error } = await db
     .from('annual_leave_ledger')
-    .select('employee_id, type, days')
+    .select('employee_id, type, days, date')
     .in('employee_id', withHire.map(e => e.id));
   if (error) throw error;
 
@@ -74,7 +74,8 @@ async function getAnnualLeaveStats(branchId, year) {
     const used = empEntries
       .filter(r => r.type === 'usage')
       .reduce((s, r) => s + Number(r.days), 0);
-    return { emp: e, total: accrued, used, remaining: accrued - used };
+    const accrualDates = new Set(empEntries.filter(r => r.type === 'accrual').map(r => r.date));
+    return { emp: e, total: accrued, used, remaining: accrued - used, accrualDates };
   });
 }
 

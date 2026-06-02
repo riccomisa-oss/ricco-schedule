@@ -1,3 +1,12 @@
+function getNextAccrualInfo(hireDate, today) {
+  const all = computeExpectedAccruals(hireDate, '2035-01-01');
+  const upcoming = all.filter(e => e.date >= today);
+  return {
+    nextMonthly: upcoming.find(e => e.days === 1)  || null,
+    nextAnniv:   upcoming.find(e => e.days === 15) || null,
+  };
+}
+
 function computeExpectedAccruals(hireDate, asOf) {
   const [hy, hm, hd] = hireDate.split('-').map(Number);
   const until = asOf || new Date().toISOString().split('T')[0];
@@ -38,6 +47,7 @@ async function renderAnnualLeaveTab(branchId) {
 
   const withHire  = employees.filter(e => e.hire_date);
   const statsMap  = new Map(stats.map(s => [s.emp.id, s]));
+  const today     = new Date().toISOString().split('T')[0];
   let currentEmpId = null;
 
   el.innerHTML = `
@@ -50,12 +60,15 @@ async function renderAnnualLeaveTab(branchId) {
       : `<div class="card" style="padding:0;">
           <table class="data-table">
             <thead>
-              <tr><th>직원</th><th>입사일</th><th>발생</th><th>사용</th><th>잔여</th><th></th></tr>
+              <tr><th>직원</th><th>입사일</th><th>발생</th><th>사용</th><th>잔여</th><th>다음 발생일</th><th></th></tr>
             </thead>
             <tbody>
               ${withHire.map(e => {
-                const s = statsMap.get(e.id) || { total: 0, used: 0, remaining: 0 };
+                const s = statsMap.get(e.id) || { total: 0, used: 0, remaining: 0, accrualDates: new Set() };
                 const color = s.remaining < 0 ? 'badge-rejected' : s.remaining > 0 ? 'badge-approved' : '';
+                const { nextMonthly, nextAnniv } = getNextAccrualInfo(e.hire_date, today);
+                const monthlyPending = nextMonthly && !s.accrualDates.has(nextMonthly.date);
+                const monthLabel = nextMonthly ? nextMonthly.date.slice(5, 7).replace(/^0/, '') + '월' : '';
                 return `
                   <tr>
                     <td><strong>${e.name}</strong></td>
@@ -63,7 +76,12 @@ async function renderAnnualLeaveTab(branchId) {
                     <td>${s.total}일</td>
                     <td>${s.used}일</td>
                     <td><span class="badge ${color}">${s.remaining}일</span></td>
-                    <td>
+                    <td style="font-size:12px;line-height:1.8;">
+                      ${nextMonthly ? `<div style="color:var(--gray);">월차 ${nextMonthly.date}</div>` : ''}
+                      ${nextAnniv   ? `<div style="color:var(--olive);">${nextAnniv.note} ${nextAnniv.date}</div>` : ''}
+                    </td>
+                    <td style="white-space:nowrap;">
+                      ${monthlyPending ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="runMonthlyAccrual('${e.id}','${e.name}','${nextMonthly.date}','${monthLabel}')">${monthLabel} 만근</button>` : ''}
                       <button class="btn btn-ghost btn-sm" onclick="openLedger('${e.id}','${e.name}')">이력</button>
                     </td>
                   </tr>`;
@@ -141,6 +159,12 @@ async function renderAnnualLeaveTab(branchId) {
     document.getElementById('ledger-title').textContent = `${empName} — 연차 이력`;
     await refreshLedger();
     document.getElementById('ledger-modal').classList.add('open');
+  };
+
+  window.runMonthlyAccrual = async (empId, empName, date, monthLabel) => {
+    if (!confirm(`${empName} ${monthLabel} 만근 처리 — ${date} +1일 추가하시겠습니까?`)) return;
+    await addLedgerEntry({ employeeId: empId, date, type: 'accrual', days: 1, note: '월차' });
+    renderAnnualLeaveTab(branchId);
   };
 
   document.getElementById('close-ledger-btn').addEventListener('click', () => {

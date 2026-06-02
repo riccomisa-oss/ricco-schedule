@@ -63,9 +63,8 @@ async function renderAnnualLeaveTab(branchId) {
                     <td>${s.total}일</td>
                     <td>${s.used}일</td>
                     <td><span class="badge ${color}">${s.remaining}일</span></td>
-                    <td style="white-space:nowrap;">
+                    <td>
                       <button class="btn btn-ghost btn-sm" onclick="openLedger('${e.id}','${e.name}')">이력</button>
-                      <button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="runAutoAccrual('${e.id}','${e.name}','${e.hire_date}')">발생 업데이트</button>
                     </td>
                   </tr>`;
               }).join('')}

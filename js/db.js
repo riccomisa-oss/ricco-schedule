@@ -178,7 +178,7 @@ async function getOrCreateSchedule(branchId, year, month) {
     .eq('branch_id', branchId)
     .eq('year', year)
     .eq('month', month)
-    .single();
+    .maybeSingle();
   if (existing) return existing;
 
   const { data, error } = await db

@@ -20,18 +20,15 @@ async function renderRequestTab(employee, branchId) {
 
     // 연차 잔여일
     const myStat = annualStats.find(s => s.emp.id === employee.id);
-    const annualBadge = myStat
-      ? `<div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray);">
-           연차 잔여 <strong style="color:var(--olive);font-size:16px;">${myStat.remaining}일</strong>
-           <span style="font-size:11px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
-         </div>`
-      : '';
+
+    const isCurrentMonth = year === now2.getFullYear() && month === now2.getMonth() + 1;
+    const isPastMonth = year < now2.getFullYear() || (year === now2.getFullYear() && month < now2.getMonth() + 1);
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
         <h2>휴무 신청</h2>
         <div style="display:flex;align-items:center;gap:8px;">
-          <button class="btn btn-ghost btn-sm" id="prev-month-emp">◀</button>
+          <button class="btn btn-ghost btn-sm" id="prev-month-emp" ${isCurrentMonth ? 'disabled style="opacity:0.3;cursor:not-allowed;"' : ''}>◀</button>
           <span style="font-weight:600;">${year}년 ${month}월</span>
           <button class="btn btn-ghost btn-sm" id="next-month-emp">▶</button>
         </div>
@@ -44,7 +41,7 @@ async function renderRequestTab(employee, branchId) {
         <div class="form-group" style="margin:0 0 4px 0;">
           <label>날짜</label>
           <input type="date" id="req-date"
-            min="${(year > now2.getFullYear() || month > now2.getMonth() + 1)
+            min="${(year > now2.getFullYear() || (year === now2.getFullYear() && month > now2.getMonth() + 1))
               ? `${year}-${String(month).padStart(2,'0')}-01`
               : `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,'0')}-${String(now2.getDate()).padStart(2,'0')}`}"
             max="${new Date(year, month, 0).toISOString().split('T')[0]}"
@@ -137,6 +134,7 @@ async function renderRequestTab(employee, branchId) {
     }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
+      if (isCurrentMonth) return;
       ({ year, month } = prevMonth(year, month)); render();
     });
     document.getElementById('next-month-emp').addEventListener('click', () => {

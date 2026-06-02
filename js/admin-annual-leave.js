@@ -1,22 +1,27 @@
 function computeExpectedAccruals(hireDate, asOf) {
-  const hire  = new Date(hireDate + 'T00:00:00');
-  const until = new Date((asOf || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+  const [hy, hm, hd] = hireDate.split('-').map(Number);
+  const until = asOf || new Date().toISOString().split('T')[0];
   const entries = [];
 
-  // 입사 1~11개월: 매월 1일
+  const pad = n => String(n).padStart(2, '0');
+  const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+  const toDateStr = (y, m, d) => `${y}-${pad(m)}-${pad(Math.min(d, daysInMonth(y, m)))}`;
+
+  // 입사 1~11개월: 매월 1일 (만근 시 발생 — 수동 또는 발생 업데이트로 추가)
   for (let m = 1; m <= 11; m++) {
-    const d = new Date(hire);
-    d.setMonth(d.getMonth() + m);
-    if (d > until) break;
-    entries.push({ date: d.toISOString().split('T')[0], type: 'accrual', days: 1, note: `입사 ${m}개월차` });
+    const totalM = hm - 1 + m;
+    const y = hy + Math.floor(totalM / 12);
+    const mo = (totalM % 12) + 1;
+    const dateStr = toDateStr(y, mo, hd);
+    if (dateStr > until) break;
+    entries.push({ date: dateStr, type: 'accrual', days: 1, note: `입사 ${m}개월차` });
   }
 
   // 입사 1, 2, 3… 주년: 15일
   for (let y = 1; y <= 10; y++) {
-    const d = new Date(hire);
-    d.setFullYear(d.getFullYear() + y);
-    if (d > until) break;
-    entries.push({ date: d.toISOString().split('T')[0], type: 'accrual', days: 15, note: `입사 ${y}년차 연차` });
+    const dateStr = toDateStr(hy + y, hm, hd);
+    if (dateStr > until) break;
+    entries.push({ date: dateStr, type: 'accrual', days: 15, note: `입사 ${y}년차 연차` });
   }
 
   return entries.sort((a, b) => a.date.localeCompare(b.date));
@@ -158,10 +163,11 @@ async function renderAnnualLeaveTab(branchId) {
     const today    = new Date().toISOString().split('T')[0];
     const expected = computeExpectedAccruals(hireDate, today);
     const existing = await getAnnualLedger(empId);
-    const existingKeys = new Set(
-      existing.filter(e => e.type === 'accrual').map(e => `${e.date}|${e.note}`)
+    // 이미 발생 항목이 있는 날짜는 건너뜀 (note 무관, 날짜 기준)
+    const existingDates = new Set(
+      existing.filter(e => e.type === 'accrual').map(e => e.date)
     );
-    const toAdd = expected.filter(e => !existingKeys.has(`${e.date}|${e.note}`));
+    const toAdd = expected.filter(e => !existingDates.has(e.date));
     if (toAdd.length === 0) {
       return alert(`${empName}: 추가할 발생 항목이 없습니다.`);
     }

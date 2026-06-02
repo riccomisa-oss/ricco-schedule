@@ -43,7 +43,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
       const myEntries = entries.filter(e => e.employee_id === employee.id);
       const myEntryMap = new Map(myEntries.map(e => [e.date, e]));
 
-      // 날짜별 출근 직원 목록 (off 제외)
+      // 날짜별 출근 직원 목록 (off 제외) + 시프트 정보 포함
       const workersByDate = new Map();
       entries
         .filter(e => e.shift_type !== 'off')
@@ -52,6 +52,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           workersByDate.get(e.date).push({
             name: e.employees?.name || '?',
             role: e.employees?.role || '',
+            shift: e.shift_type,
           });
         });
 
@@ -84,28 +85,39 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         }
       }
 
-      const SHIFT_STYLE = {
-        open:       { bg: '#e8f5e9', color: '#2e7d32', label: '오픈' },
-        close:      { bg: '#e3f2fd', color: '#1565c0', label: '마감' },
-        hall_fixed: { bg: '#f3e5f5', color: '#6a1b9a', label: '홀'   },
-        off:        { bg: '#fce4ec', color: '#c62828', label: '휴무' },
-      };
-
       function renderCell(date) {
         const myEntry = myEntryMap.get(date);
         const workers = workersByDate.get(date) || [];
-        const others  = workers.filter(w => w.name !== employee.name);
         let html = '';
 
-        if (myEntry) {
-          const s = SHIFT_STYLE[myEntry.shift_type] || {};
-          html += `<div style="margin:2px 0 4px;padding:3px 0;background:${s.bg};border-radius:4px;text-align:center;">
-            <span style="font-size:12px;font-weight:700;color:${s.color};">${s.label}</span>
-          </div>`;
-        }
+        if (!myEntry) return html;
 
-        if (myEntry?.shift_type !== 'off' && others.length > 0) {
-          html += `<div style="font-size:9px;color:var(--gray);line-height:1.6;">${others.map(w => w.name).join(' · ')}</div>`;
+        if (myEntry.shift_type === 'off') {
+          html += `<div style="margin:2px 0 3px;padding:3px 0;background:#fce4ec;border-radius:4px;text-align:center;">
+            <span style="font-size:12px;font-weight:700;color:#c62828;">휴무</span>
+          </div>`;
+        } else if (myEntry.shift_type === 'open') {
+          html += `<div style="margin:2px 0 3px;padding:3px 0;background:#e8f5e9;border-radius:4px;text-align:center;">
+            <span style="font-size:12px;font-weight:700;color:#2e7d32;">오픈</span>
+          </div>`;
+          const others = workers.filter(w => w.name !== employee.name);
+          if (others.length > 0) {
+            html += `<div style="font-size:9px;color:var(--gray);line-height:1.7;">${others.map(w => w.name).join(' · ')}</div>`;
+          }
+        } else if (myEntry.shift_type === 'hall_fixed') {
+          html += `<div style="margin:2px 0 3px;padding:3px 0;background:#f3e5f5;border-radius:4px;text-align:center;">
+            <span style="font-size:12px;font-weight:700;color:#6a1b9a;">홀</span>
+          </div>`;
+          const opener = workers.find(w => w.shift === 'open');
+          if (opener) {
+            html += `<div style="font-size:9px;color:var(--gray);">오픈 ${opener.name}</div>`;
+          }
+        } else {
+          // close: 마감 표기 없이 오프너 이름만
+          const opener = workers.find(w => w.shift === 'open');
+          if (opener) {
+            html += `<div style="font-size:9px;color:var(--gray);margin-top:2px;">오픈 ${opener.name}</div>`;
+          }
         }
         return html;
       }
@@ -122,9 +134,9 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         ${todaySection}
         <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:12px;">
-          ${Object.values(SHIFT_STYLE).map(s =>
-            `<span style="background:${s.bg};color:${s.color};border-radius:3px;padding:2px 8px;font-weight:600;">${s.label}</span>`
-          ).join('')}
+          <span style="background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:2px 8px;font-weight:600;">오픈</span>
+          <span style="background:#f3e5f5;color:#6a1b9a;border-radius:3px;padding:2px 8px;font-weight:600;">홀</span>
+          <span style="background:#fce4ec;color:#c62828;border-radius:3px;padding:2px 8px;font-weight:600;">휴무</span>
         </div>
       `;
 

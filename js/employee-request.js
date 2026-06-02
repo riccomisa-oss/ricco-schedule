@@ -37,8 +37,6 @@ async function renderRequestTab(employee, branchId) {
         </div>
       </div>
 
-      ${annualBadge ? `<div class="card" style="margin-bottom:12px;padding:12px 16px;">${annualBadge}</div>` : ''}
-
       <div id="request-result" style="margin-bottom:12px;"></div>
 
       <div class="card" style="margin-bottom:16px;">
@@ -53,13 +51,17 @@ async function renderRequestTab(employee, branchId) {
             style="width:100%;box-sizing:border-box;" />
         </div>
         <div id="date-off-info" style="font-size:12px;min-height:18px;margin-bottom:8px;"></div>
-        <div class="form-group" style="margin:0 0 12px 0;">
+        <div class="form-group" style="margin:0 0 8px 0;">
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
             <option value="normal">정상 휴무</option>
             ${employee.hire_date != null ? '<option value="annual">연차 휴무</option>' : ''}
           </select>
         </div>
+        ${myStat ? `<div id="annual-info" style="font-size:12px;color:var(--gray);margin-bottom:12px;display:none;">
+          연차 잔여 <strong style="color:var(--olive);">${myStat.remaining}일</strong>
+          <span>(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+        </div>` : ''}
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
       </div>
 
@@ -125,6 +127,14 @@ async function renderRequestTab(employee, branchId) {
       infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
       infoEl.style.color = 'var(--gray)';
     });
+
+    const reqTypeEl = document.getElementById('req-type');
+    if (reqTypeEl) {
+      reqTypeEl.addEventListener('change', () => {
+        const annualInfo = document.getElementById('annual-info');
+        if (annualInfo) annualInfo.style.display = reqTypeEl.value === 'annual' ? 'block' : 'none';
+      });
+    }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
       ({ year, month } = prevMonth(year, month)); render();

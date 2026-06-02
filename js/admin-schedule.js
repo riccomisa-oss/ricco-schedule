@@ -638,13 +638,8 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
   const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin, new Set(), maxConsecutive);
   const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds, maxConsecutive);
 
-  // ── 초과 인원 강제 휴무 + 연차 자동 배정 ──────────────────
-  // 최소 인원 = 최대 근무 인원. 초과분은 off, 연차 있으면 연차로 처리.
-  const annualStats = await getAnnualLeaveStats(branchId, year);
-  const alRemainingMap     = new Map(annualStats.map(s => [s.emp.id, s.remaining]));
-  const alAssignedThisRun  = new Map([...kitchenEmps, ...hallEmps].map(e => [e.id, 0]));
-  const annualLeaveToCreate = [];
-
+  // ── 초과 인원 강제 휴무 ────────────────────────────────────
+  // 연차는 직원이 직접 신청한 것만 반영 (자동 생성 없음)
   const zones = [
     { zoneEmps: kitchenEmps, zoneAutoOff: kitchenAutoOff, wdMin: kitchenWeekdayMin, weMin: kitchenWeekendMin, ftIds: new Set() },
     { zoneEmps: hallEmps,    zoneAutoOff: hallAutoOff,    wdMin: hallWeekdayMin,    weMin: hallWeekendMin,    ftIds: hallFullTimeIds },
@@ -663,11 +658,8 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
       const excess = working.length - maxWork;
       if (excess <= 0) continue;
 
-      // 연차 잔여 있는 직원 우선, 그다음 파트타이머, 마지막으로 off가 적은 순
+      // 파트타이머 우선, 그다음 autoOff가 적은 순
       const candidates = [...working].sort((a, b) => {
-        const aAL = (alRemainingMap.get(a.id) || 0) - (alAssignedThisRun.get(a.id) || 0) > 0;
-        const bAL = (alRemainingMap.get(b.id) || 0) - (alAssignedThisRun.get(b.id) || 0) > 0;
-        if (aAL !== bAL) return bAL - aAL;
         const aFt = ftIds.has(a.id) ? 1 : 0;
         const bFt = ftIds.has(b.id) ? 1 : 0;
         if (aFt !== bFt) return aFt - bFt;
@@ -687,23 +679,9 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
         zoneAutoOff.get(emp.id).add(dateStr);
         forcedOff.add(emp.id);
         forced++;
-
-        // 연차 잔여 있으면 연차로 기록
-        const alLeft = (alRemainingMap.get(emp.id) || 0) - (alAssignedThisRun.get(emp.id) || 0);
-        if (alLeft > 0 && !approvedOffDates.get(emp.id)?.has(dateStr)) {
-          annualLeaveToCreate.push({ employeeId: emp.id, date: dateStr });
-          alAssignedThisRun.set(emp.id, (alAssignedThisRun.get(emp.id) || 0) + 1);
-        }
       }
     }
   }
-
-  // 연차 요청 일괄 생성 (중복은 조용히 무시)
-  await Promise.all(
-    annualLeaveToCreate.map(({ employeeId, date }) =>
-      createDayOffRequest({ employeeId, date, type: 'annual', status: 'override_approved' }).catch(() => {})
-    )
-  );
 
   function isOff(emp, dateStr) {
     return approvedOffDates.get(emp.id)?.has(dateStr)

@@ -39,10 +39,10 @@ function validateDayOffRequest({ employee, date, type, allEmployees, approvedReq
     }
   }
 
-  // 조건 4: 연차는 annual_leave_total 설정된 직원만
+  // 조건 4: 연차는 hire_date 설정된 직원만
   if (type === 'annual') {
-    if (employee.annual_leave_total == null) {
-      return { approved: false, reason: '연차 사용이 설정되지 않은 직원입니다.' };
+    if (employee.hire_date == null) {
+      return { approved: false, reason: '입사일이 설정되지 않은 직원입니다.' };
     }
   }
 

@@ -19,7 +19,7 @@ async function getEmployees(branchId) {
   return data;
 }
 
-async function createEmployee({ branchId, name, role, openCapable = false, annualLeaveTotal = null }) {
+async function createEmployee({ branchId, name, role, openCapable = false, annualLeaveTotal = null, hireDate = null }) {
   const roleCapabilities = {
     kitchen_full:  { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: true  },
     kitchen_pizza: { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: false },
@@ -31,14 +31,14 @@ async function createEmployee({ branchId, name, role, openCapable = false, annua
   const caps = roleCapabilities[role];
   const { data, error } = await db
     .from('employees')
-    .insert({ branch_id: branchId, name, role, open_capable: openCapable, annual_leave_total: annualLeaveTotal, ...caps })
+    .insert({ branch_id: branchId, name, role, open_capable: openCapable, annual_leave_total: annualLeaveTotal, hire_date: hireDate, ...caps })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-async function updateEmployee(id, { name, role, openCapable = false, annualLeaveTotal = null }) {
+async function updateEmployee(id, { name, role, openCapable = false, annualLeaveTotal = null, hireDate = null }) {
   const roleCapabilities = {
     kitchen_full:  { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: true  },
     kitchen_pizza: { employment_type: 'fulltime',  pizza_capable: true,  pasta_capable: false },
@@ -50,30 +50,32 @@ async function updateEmployee(id, { name, role, openCapable = false, annualLeave
   const caps = roleCapabilities[role];
   const { error } = await db
     .from('employees')
-    .update({ name, role, open_capable: openCapable, annual_leave_total: annualLeaveTotal, ...caps })
+    .update({ name, role, open_capable: openCapable, annual_leave_total: annualLeaveTotal, hire_date: hireDate, ...caps })
     .eq('id', id);
   if (error) throw error;
 }
 
 async function getAnnualLeaveStats(branchId, year) {
   const employees = await getEmployees(branchId);
-  const startDate = `${year}-01-01`;
-  const endDate   = `${year}-12-31`;
-  const { data: requests, error } = await db
-    .from('day_off_requests')
-    .select('employee_id, type, status, date')
-    .in('status', ['approved', 'override_approved'])
-    .eq('type', 'annual')
-    .gte('date', startDate)
-    .lte('date', endDate);
+  const withHire = employees.filter(e => e.hire_date != null);
+  if (withHire.length === 0) return [];
+
+  const { data: entries, error } = await db
+    .from('annual_leave_ledger')
+    .select('employee_id, type, days')
+    .in('employee_id', withHire.map(e => e.id));
   if (error) throw error;
 
-  return employees
-    .filter(e => e.annual_leave_total != null)
-    .map(e => {
-      const used = (requests || []).filter(r => r.employee_id === e.id).length;
-      return { emp: e, total: e.annual_leave_total, used, remaining: e.annual_leave_total - used };
-    });
+  return withHire.map(e => {
+    const empEntries = (entries || []).filter(r => r.employee_id === e.id);
+    const accrued = empEntries
+      .filter(r => r.type === 'accrual')
+      .reduce((s, r) => s + Number(r.days), 0);
+    const used = empEntries
+      .filter(r => r.type === 'usage')
+      .reduce((s, r) => s + Number(r.days), 0);
+    return { emp: e, total: accrued, used, remaining: accrued - used };
+  });
 }
 
 async function deactivateEmployee(id) {
@@ -212,5 +214,31 @@ async function upsertScheduleEntry({ scheduleId, employeeId, date, shiftType }) 
       { schedule_id: scheduleId, employee_id: employeeId, date, shift_type: shiftType },
       { onConflict: 'schedule_id,employee_id,date' }
     );
+  if (error) throw error;
+}
+
+// ── Annual Leave Ledger ───────────────────────────────────
+async function getAnnualLedger(employeeId) {
+  const { data, error } = await db
+    .from('annual_leave_ledger')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .order('date');
+  if (error) throw error;
+  return data;
+}
+
+async function addLedgerEntry({ employeeId, date, type, days, note = null }) {
+  const { data, error } = await db
+    .from('annual_leave_ledger')
+    .insert({ employee_id: employeeId, date, type, days, note })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function deleteLedgerEntry(id) {
+  const { error } = await db.from('annual_leave_ledger').delete().eq('id', id);
   if (error) throw error;
 }

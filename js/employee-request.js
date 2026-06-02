@@ -54,7 +54,7 @@ async function renderRequestTab(employee, branchId) {
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
             <option value="normal">정상 휴무</option>
-            ${employee.annual_leave_total != null ? '<option value="annual">연차 휴무</option>' : ''}
+            ${employee.hire_date != null ? '<option value="annual">연차 휴무</option>' : ''}
           </select>
         </div>
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
@@ -122,6 +122,16 @@ async function renderRequestTab(employee, branchId) {
       const type = document.getElementById('req-type').value;
       if (!date) return;
 
+      if (type === 'annual') {
+        const myStat = annualStats.find(s => s.emp.id === employee.id);
+        const remaining = myStat ? myStat.remaining : 0;
+        if (remaining <= 0) {
+          document.getElementById('request-result').innerHTML =
+            `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
+          return;
+        }
+      }
+
       const result = validateDayOffRequest({
         employee,
         date,
@@ -139,6 +149,16 @@ async function renderRequestTab(employee, branchId) {
         status,
         rejectionReason: result.reason,
       });
+
+      if (result.approved && type === 'annual') {
+        await addLedgerEntry({
+          employeeId: employee.id,
+          date,
+          type: 'usage',
+          days: 1,
+          note: '연차 사용',
+        });
+      }
 
       const msgEl = document.getElementById('request-result');
       if (result.approved) {

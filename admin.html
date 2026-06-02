@@ -33,12 +33,14 @@
     <button class="tab-btn active" data-tab="employees">직원 관리</button>
     <button class="tab-btn" data-tab="conditions">조건 설정</button>
     <button class="tab-btn" data-tab="schedule">스케줄 편집</button>
+    <button class="tab-btn" data-tab="annual-leave">연차 관리</button>
     <button class="tab-btn" data-tab="share">공유 링크</button>
   </div>
 
   <div id="employees" class="tab-panel active"></div>
   <div id="conditions" class="tab-panel"></div>
   <div id="schedule"   class="tab-panel"></div>
+  <div id="annual-leave" class="tab-panel"></div>
   <div id="share"      class="tab-panel"></div>
 </div>
 
@@ -51,6 +53,7 @@
 <script src="js/admin-conditions.js"></script>
 <script src="js/admin-requests.js"></script>
 <script src="js/admin-schedule.js"></script>
+<script src="js/admin-annual-leave.js"></script>
 <script src="js/admin-share.js"></script>
 <script>
   let currentBranchId = BRANCH_IDS.HANAM;
@@ -98,10 +101,11 @@
 
   function refreshCurrentTab(tab) {
     const fns = {
-      employees:  () => renderEmployeesTab(currentBranchId),
-      conditions: () => renderConditionsTab(currentBranchId),
-      schedule:   () => renderScheduleTab(currentBranchId),
-      share:      () => renderShareTab(currentBranchId),
+      employees:      () => renderEmployeesTab(currentBranchId),
+      conditions:     () => renderConditionsTab(currentBranchId),
+      schedule:       () => renderScheduleTab(currentBranchId),
+      'annual-leave': () => renderAnnualLeaveTab(currentBranchId),
+      share:          () => renderShareTab(currentBranchId),
     };
     if (fns[tab]) fns[tab]();
   }

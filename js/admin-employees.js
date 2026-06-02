@@ -12,7 +12,7 @@ async function renderEmployeesTab(branchId) {
     <div class="card" style="padding:0;">
       <table class="data-table">
         <thead>
-          <tr><th>이름</th><th>역할</th><th>고용형태</th><th>능력</th><th>오픈 가능</th><th>연차</th><th></th></tr>
+          <tr><th>이름</th><th>역할</th><th>고용형태</th><th>능력</th><th>오픈 가능</th><th>입사일</th><th>연차</th><th></th></tr>
         </thead>
         <tbody>
           ${employees.map(e => `
@@ -33,13 +33,14 @@ async function renderEmployeesTab(branchId) {
                      </button>`
                   : '<span style="color:var(--gray);font-size:12px;">홀</span>'}
               </td>
+              <td style="font-size:12px;color:var(--gray);">${e.hire_date || '—'}</td>
               <td>
                 ${e.annual_leave_total != null
                   ? `<span class="badge badge-approved">${e.annual_leave_total}일</span>`
                   : '<span style="color:var(--gray);font-size:12px;">—</span>'}
               </td>
               <td>
-                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}',${e.open_capable},${e.annual_leave_total ?? 'null'})">수정</button>
+                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}',${e.open_capable},${e.annual_leave_total ?? 'null'},'${e.hire_date || ''}')">수정</button>
                 <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="confirmDeactivate('${e.id}','${e.name}')">삭제</button>
               </td>
             </tr>
@@ -77,6 +78,10 @@ async function renderEmployeesTab(branchId) {
           <label>연차 일수 (연간 총 일수)</label>
           <input type="number" id="emp-annual-leave-total" min="1" max="25" placeholder="예: 15" style="width:120px;" />
         </div>
+        <div class="form-group">
+          <label>입사일</label>
+          <input type="date" id="emp-hire-date" style="width:100%;box-sizing:border-box;" />
+        </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" onclick="closeEmpModal()">취소</button>
           <button class="btn btn-primary" id="emp-save-btn">저장</button>
@@ -109,6 +114,7 @@ async function renderEmployeesTab(branchId) {
     document.getElementById('emp-open-capable').checked = false;
     document.getElementById('emp-annual-leave-check').checked = false;
     document.getElementById('emp-annual-leave-total').value = '';
+    document.getElementById('emp-hire-date').value = '';
     updateOpenCapableVisibility();
     updateAnnualLeaveVisibility();
     document.getElementById('emp-modal').classList.add('open');
@@ -125,15 +131,16 @@ async function renderEmployeesTab(branchId) {
     const annualLeaveTotal = annualLeaveCheck && annualLeaveTotalRaw
       ? parseInt(annualLeaveTotalRaw, 10)
       : null;
+    const hireDate = document.getElementById('emp-hire-date').value || null;
 
     if (!name) return alert('이름을 입력하세요.');
     if (annualLeaveCheck && !annualLeaveTotalRaw) return alert('연차 일수를 입력하세요.');
 
     try {
       if (editingId) {
-        await updateEmployee(editingId, { name, role, openCapable, annualLeaveTotal });
+        await updateEmployee(editingId, { name, role, openCapable, annualLeaveTotal, hireDate });
       } else {
-        await createEmployee({ branchId, name, role, openCapable, annualLeaveTotal });
+        await createEmployee({ branchId, name, role, openCapable, annualLeaveTotal, hireDate });
       }
       closeEmpModal();
       renderEmployeesTab(branchId);
@@ -147,15 +154,16 @@ async function renderEmployeesTab(branchId) {
     }
   });
 
-  window.openEditEmployee = (id, name, role, openCapable, annualLeaveTotal) => {
+  window.openEditEmployee = (id, name, role, openCapable, annualLeaveTotal, hireDate) => {
     editingId = id;
     document.getElementById('emp-modal-title').textContent = '직원 수정';
     document.getElementById('emp-name').value = name;
     document.getElementById('emp-role').value = role;
     document.getElementById('emp-open-capable').checked = !!openCapable;
-    const hasAnnual = annualLeaveTotal != null;
+    const hasAnnual = annualLeaveTotal != null && annualLeaveTotal !== 'null';
     document.getElementById('emp-annual-leave-check').checked = hasAnnual;
     document.getElementById('emp-annual-leave-total').value = hasAnnual ? annualLeaveTotal : '';
+    document.getElementById('emp-hire-date').value = hireDate || '';
     updateOpenCapableVisibility();
     updateAnnualLeaveVisibility();
     document.getElementById('emp-modal').classList.add('open');

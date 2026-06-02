@@ -10,15 +10,40 @@ async function renderScheduleTab(branchId) {
   let viewMode = 'edit';
 
   async function render() {
+    const { year: pY, month: pM } = prevMonth(year, month);
+    const { year: nY, month: nM } = nextMonth(year, month);
+
     const [employees, conditions] = await Promise.all([
       getEmployees(branchId),
       getConditions(branchId),
     ]);
     const schedule = await getOrCreateSchedule(branchId, year, month);
-    const [entries, requests] = await Promise.all([
+    const [entries, requests, prevSched, nextSched] = await Promise.all([
       getScheduleEntries(schedule.id),
       getDayOffRequests(branchId, year, month),
+      getScheduleIfExists(branchId, pY, pM),
+      getScheduleIfExists(branchId, nY, nM),
     ]);
+
+    const [prevEntries, nextEntries, prevRequests, nextRequests] = await Promise.all([
+      prevSched ? getScheduleEntries(prevSched.id) : Promise.resolve([]),
+      nextSched ? getScheduleEntries(nextSched.id) : Promise.resolve([]),
+      getDayOffRequests(branchId, pY, pM),
+      getDayOffRequests(branchId, nY, nM),
+    ]);
+
+    const adjEntryMap = new Map();
+    [...prevEntries, ...nextEntries].forEach(e => {
+      adjEntryMap.set(`${e.employee_id}_${e.date}`, e);
+    });
+
+    const adjApprovedOffDates = new Map();
+    [...prevRequests, ...nextRequests]
+      .filter(r => ['approved', 'override_approved'].includes(r.status))
+      .forEach(r => {
+        if (!adjApprovedOffDates.has(r.employee_id)) adjApprovedOffDates.set(r.employee_id, new Set());
+        adjApprovedOffDates.get(r.employee_id).add(r.date);
+      });
 
     const approvedOffDates = new Map();
     requests
@@ -49,36 +74,56 @@ async function renderScheduleTab(branchId) {
 
     function renderPreview() {
       const pfx = `${year}-${String(month).padStart(2,'0')}`;
+      const firstDow = new Date(year, month - 1, 1).getDay();
+      const lastDow  = new Date(year, month - 1, daysInMonth).getDay();
+      const daysInPrevMonth = new Date(pY, pM, 0).getDate();
 
-      // 일요일 기준으로 주 분리
+      // 이전·다음 월 경계 날짜 포함한 전체 표시 날짜 목록
+      const allDays = [];
+      for (let i = firstDow - 1; i >= 0; i--) {
+        const d = daysInPrevMonth - i;
+        const dateStr = `${pY}-${String(pM).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        allDays.push({ dateStr, d, dow: new Date(pY, pM - 1, d).getDay(), isAdjacent: true });
+      }
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
+        allDays.push({ dateStr, d, dow: new Date(year, month - 1, d).getDay(), isAdjacent: false });
+      }
+      if (lastDow !== 6) {
+        for (let d = 1; d <= 6 - lastDow; d++) {
+          const dateStr = `${nY}-${String(nM).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          allDays.push({ dateStr, d, dow: new Date(nY, nM - 1, d).getDay(), isAdjacent: true });
+        }
+      }
+
+      // 일요일 기준 주 분리
       const weeks = [];
       let week = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dow = new Date(year, month - 1, d).getDay();
-        if (dow === 0 && week.length) { weeks.push(week); week = []; }
-        week.push({ d, dow });
+      for (const dayObj of allDays) {
+        if (dayObj.dow === 0 && week.length) { weeks.push(week); week = []; }
+        week.push(dayObj);
       }
       if (week.length) weeks.push(week);
 
-      function shiftCell(emp, d) {
-        const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
-        // schedule_entries 우선 표시 (자동 배정 결과)
-        const entry = entryMap.get(`${emp.id}_${dateStr}`);
+      function shiftCell(emp, dateStr, isAdjacent) {
+        const em = isAdjacent ? adjEntryMap : entryMap;
+        const ao = isAdjacent ? adjApprovedOffDates : approvedOffDates;
+        const dim = isAdjacent ? 'opacity:0.45;' : '';
+        const entry = em.get(`${emp.id}_${dateStr}`);
         const shift = entry?.shift_type;
         if (shift) {
           const s = SHIFT_COLORS[shift] || {};
-          return `<td style="background:${s.bg};text-align:center;padding:6px 2px;">
+          return `<td style="background:${s.bg};text-align:center;padding:6px 2px;${dim}">
             <span style="font-size:13px;color:${s.color};font-weight:700;">${s.label}</span></td>`;
         }
-        // schedule_entries 없을 때만 휴무 신청 표시
-        if (approvedOffDates.get(emp.id)?.has(dateStr)) {
-          return `<td style="background:#fff3e0;text-align:center;padding:6px 2px;">
+        if (ao.get(emp.id)?.has(dateStr)) {
+          return `<td style="background:#fff3e0;text-align:center;padding:6px 2px;${dim}">
             <span style="font-size:12px;color:#e65100;font-weight:600;">휴신청</span></td>`;
         }
-        return `<td style="text-align:center;color:#ddd;">—</td>`;
+        return `<td style="text-align:center;color:#ddd;${dim}">—</td>`;
       }
 
-      // 직원별 월간 주말·공휴일 휴무 총계 (승인 휴무 신청 + 배정 off 포함)
+      // 직원별 월간 주말·공휴일 휴무 총계 (당월 기준)
       const monthlyWeekendOff = new Map();
       allEmps.forEach(emp => {
         let count = 0;
@@ -92,15 +137,19 @@ async function renderScheduleTab(branchId) {
         monthlyWeekendOff.set(emp.id, count);
       });
 
-      const weekCards = weeks.map((days, wi) => {
+      let weekNum = 0;
+      const weekCards = weeks.map((days) => {
+        weekNum++;
         const first = days[0], last = days[days.length - 1];
-        const range = `${month}/${first.d}(${DAY_NAMES[first.dow]}) ~ ${month}/${last.d}(${DAY_NAMES[last.dow]})`;
+        const fmtDay = ({ d, dow, dateStr }) =>
+          `${parseInt(dateStr.split('-')[1])}/${d}(${DAY_NAMES[dow]})`;
+        const range = `${fmtDay(first)} ~ ${fmtDay(last)}`;
 
-        const thCells = days.map(({ d, dow }) => {
-          const dateStr = `${pfx}-${String(d).padStart(2,'0')}`;
-          const isHoliday = KOREAN_HOLIDAYS[year]?.has(dateStr);
+        const thCells = days.map(({ dateStr, d, dow, isAdjacent }) => {
+          const [y2] = dateStr.split('-').map(Number);
+          const isHoliday = KOREAN_HOLIDAYS[y2]?.has(dateStr);
           const color = (dow === 0 || isHoliday) ? '#c62828' : dow === 6 ? '#1565c0' : '#fff';
-          return `<th style="min-width:52px;text-align:center;padding:6px 4px;">
+          return `<th style="min-width:52px;text-align:center;padding:6px 4px;${isAdjacent ? 'opacity:0.45;' : ''}">
             <div style="font-size:11px;font-weight:400;opacity:.85;">${DAY_NAMES[dow]}</div>
             <div style="font-size:17px;font-weight:700;color:${color};">${d}</div>
           </th>`;
@@ -108,7 +157,7 @@ async function renderScheduleTab(branchId) {
 
         function empRow(emp, borderTop) {
           const isHall = emp.role.startsWith('hall');
-          const cells = days.map(({ d }) => shiftCell(emp, d)).join('');
+          const cells = days.map(({ dateStr, isAdjacent }) => shiftCell(emp, dateStr, isAdjacent)).join('');
           const wkOff = monthlyWeekendOff.get(emp.id) || 0;
           const wkOffLabel = emp.employment_type === 'fulltime'
             ? `<div style="font-size:10px;color:#1565c0;margin-top:2px;">주말휴 ${wkOff}일</div>`
@@ -129,7 +178,7 @@ async function renderScheduleTab(branchId) {
         return `
           <div style="margin-bottom:28px;">
             <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
-              <span style="font-size:15px;font-weight:700;">${wi + 1}주차</span>
+              <span style="font-size:15px;font-weight:700;">${weekNum}주차</span>
               <span style="font-size:13px;color:var(--gray);">${range}</span>
             </div>
             <div style="border:1px solid var(--light);border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -190,6 +239,29 @@ async function renderScheduleTab(branchId) {
       return cellHtml;
     }
 
+    function renderOtherCell(dateStr, dayNum) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const isWeekendDay = isHolidayOrWeekend(y, m, d);
+      let tdClass = 'other-month';
+      if (isWeekendDay) tdClass += ' weekend';
+
+      let html = `<td class="${tdClass}" data-date="${dateStr}" style="opacity:0.45;">`;
+      html += `<div class="date-num">${dayNum}</div>`;
+      allEmps.forEach(emp => {
+        const isOff = adjApprovedOffDates.get(emp.id)?.has(dateStr);
+        const entry = adjEntryMap.get(`${emp.id}_${dateStr}`);
+        const shift = entry?.shift_type;
+        if (isOff || shift === 'off') {
+          html += `<div class="shift-chip off" style="font-size:10px;">${emp.name} 휴</div>`;
+        } else if (shift) {
+          const s = SHIFT_COLORS[shift] || {};
+          html += `<div style="font-size:10px;background:${s.bg};color:${s.color};border-radius:3px;padding:1px 3px;margin:1px 0;">${emp.name} ${s.label}</div>`;
+        }
+      });
+      html += '</td>';
+      return html;
+    }
+
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <h2>스케줄 편집</h2>
@@ -216,7 +288,7 @@ async function renderScheduleTab(branchId) {
           : `<p style="font-size:12px;color:var(--gray);margin-bottom:12px;">
                ★ = 오픈 가능 직원 &nbsp;|&nbsp; 오픈 시 연두색
              </p>
-             <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>`
+             <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell, renderOtherCell)}</div>`
         }
       </div>
       <div id="annual-leave-section" style="margin-top:24px;"></div>

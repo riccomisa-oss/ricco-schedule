@@ -22,10 +22,14 @@ function isHolidayOrWeekend(year, month, day) {
   return KOREAN_HOLIDAYS[year]?.has(dateStr) ?? false;
 }
 
-function buildCalendarHTML(year, month, renderCell) {
+function buildCalendarHTML(year, month, renderCell, renderOtherCell) {
   const firstDay = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
   const today = new Date();
+
+  const { year: pY, month: pM } = prevMonth(year, month);
+  const daysInPrevMonth = new Date(pY, pM, 0).getDate();
+  const { year: nY, month: nM } = nextMonth(year, month);
 
   let html = '<table class="calendar"><thead><tr>';
   ['일', '월', '화', '수', '목', '금', '토'].forEach(d => {
@@ -33,7 +37,11 @@ function buildCalendarHTML(year, month, renderCell) {
   });
   html += '</tr></thead><tbody><tr>';
 
-  for (let i = 0; i < firstDay; i++) html += '<td class="other-month"></td>';
+  for (let i = 0; i < firstDay; i++) {
+    const prevDay = daysInPrevMonth - firstDay + 1 + i;
+    const dateStr = `${pY}-${String(pM).padStart(2, '0')}-${String(prevDay).padStart(2, '0')}`;
+    html += renderOtherCell ? renderOtherCell(dateStr, prevDay) : '<td class="other-month"></td>';
+  }
 
   let col = firstDay;
   for (let day = 1; day <= daysInMonth; day++) {
@@ -55,7 +63,11 @@ function buildCalendarHTML(year, month, renderCell) {
   }
 
   const remaining = (7 - (col % 7)) % 7;
-  for (let i = 0; i < remaining; i++) html += '<td class="other-month"></td>';
+  for (let i = 0; i < remaining; i++) {
+    const nextDay = i + 1;
+    const dateStr = `${nY}-${String(nM).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+    html += renderOtherCell ? renderOtherCell(dateStr, nextDay) : '<td class="other-month"></td>';
+  }
 
   html += '</tr></tbody></table>';
   return html;

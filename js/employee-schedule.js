@@ -84,41 +84,28 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         }
       }
 
-      // ── 이번달 근무일수 요약 ──────────────────────────────
-      const workDays = myEntries.filter(e => e.shift_type !== 'off').length;
-      const offDays  = myEntries.filter(e => e.shift_type === 'off').length;
-      const summarySection = `
-        <div style="display:flex;gap:12px;margin-bottom:16px;">
-          <div class="card" style="flex:1;text-align:center;padding:10px;">
-            <div style="font-size:20px;font-weight:700;">${workDays}일</div>
-            <div style="font-size:11px;color:var(--gray);">근무</div>
-          </div>
-          <div class="card" style="flex:1;text-align:center;padding:10px;">
-            <div style="font-size:20px;font-weight:700;">${offDays}일</div>
-            <div style="font-size:11px;color:var(--gray);">휴무</div>
-          </div>
-        </div>`;
-
-      const nameStyle = 'font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block;';
-      const groupLabel = 'font-size:9px;color:var(--gray);margin-top:3px;margin-bottom:1px;';
+      const SHIFT_STYLE = {
+        open:       { bg: '#e8f5e9', color: '#2e7d32', label: '오픈' },
+        close:      { bg: '#e3f2fd', color: '#1565c0', label: '마감' },
+        hall_fixed: { bg: '#f3e5f5', color: '#6a1b9a', label: '홀'   },
+        off:        { bg: '#fce4ec', color: '#c62828', label: '휴무' },
+      };
 
       function renderCell(date) {
         const myEntry = myEntryMap.get(date);
         const workers = workersByDate.get(date) || [];
-        const kitchen = workers.filter(w => w.role.startsWith('kitchen'));
-        const hall    = workers.filter(w => w.role.startsWith('hall'));
+        const others  = workers.filter(w => w.name !== employee.name);
         let html = '';
 
-        if (myEntry?.shift_type === 'off') {
-          html += '<span class="shift-chip off">휴무</span>';
+        if (myEntry) {
+          const s = SHIFT_STYLE[myEntry.shift_type] || {};
+          html += `<div style="margin:2px 0 4px;padding:3px 0;background:${s.bg};border-radius:4px;text-align:center;">
+            <span style="font-size:12px;font-weight:700;color:${s.color};">${s.label}</span>
+          </div>`;
         }
-        if (kitchen.length > 0) {
-          html += `<div style="${groupLabel}">주방</div>`;
-          html += kitchen.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
-        }
-        if (hall.length > 0) {
-          html += `<div style="${groupLabel}">홀</div>`;
-          html += hall.map(w => `<span style="${nameStyle}">${w.name}</span>`).join('');
+
+        if (myEntry?.shift_type !== 'off' && others.length > 0) {
+          html += `<div style="font-size:9px;color:var(--gray);line-height:1.6;">${others.map(w => w.name).join(' · ')}</div>`;
         }
         return html;
       }
@@ -133,8 +120,12 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           </div>
         </div>
         ${todaySection}
-        ${summarySection}
         <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:12px;">
+          ${Object.values(SHIFT_STYLE).map(s =>
+            `<span style="background:${s.bg};color:${s.color};border-radius:3px;padding:2px 8px;font-weight:600;">${s.label}</span>`
+          ).join('')}
+        </div>
       `;
 
       document.getElementById('prev-month-es').addEventListener('click', () => {

@@ -88,6 +88,8 @@
   }
 
   function selectEmployee() {
+    localStorage.setItem('ricco_last_branch', currentBranchId);
+    localStorage.setItem(`ricco_emp_${currentBranchId}`, selectedEmployee.id);
     document.getElementById('name-select-screen').style.display = 'none';
     document.getElementById('employee-app').style.display = 'block';
     document.getElementById('selected-name').textContent = selectedEmployee.name;
@@ -95,6 +97,7 @@
   }
 
   document.getElementById('change-name-btn').addEventListener('click', () => {
+    localStorage.removeItem(`ricco_emp_${currentBranchId}`);
     document.getElementById('name-select-screen').style.display = 'flex';
     document.getElementById('employee-app').style.display = 'none';
     selectedEmployee = null;
@@ -117,6 +120,46 @@
       if (btn.dataset.tab === 'emp-request')  renderRequestTab(selectedEmployee, currentBranchId);
     });
   });
+
+  // 페이지 로드 시 URL 파라미터 + localStorage 복원
+  async function init() {
+    const params = new URLSearchParams(window.location.search);
+    const branchParam = params.get('branch');
+    const targetBranch = branchParam || localStorage.getItem('ricco_last_branch');
+    if (!targetBranch) return;
+
+    currentBranchId = targetBranch;
+    const [branches, employees] = await Promise.all([getBranches(), getEmployees(targetBranch)]);
+    const branch = branches.find(b => b.id === targetBranch);
+    document.getElementById('branch-label').textContent = branch?.name || '';
+
+    const savedEmpId = localStorage.getItem(`ricco_emp_${targetBranch}`);
+    const fulltime = employees.filter(e => e.employment_type !== 'parttime');
+    if (savedEmpId) {
+      selectedEmployee = fulltime.find(e => e.id === savedEmpId);
+    }
+
+    if (selectedEmployee) {
+      document.getElementById('branch-select-screen').style.display = 'none';
+      document.getElementById('employee-app').style.display = 'block';
+      document.getElementById('selected-name').textContent = selectedEmployee.name;
+      renderRequestTab(selectedEmployee, currentBranchId);
+    } else {
+      document.getElementById('branch-select-screen').style.display = 'none';
+      const list = document.getElementById('name-list');
+      list.innerHTML = fulltime.map(e =>
+        `<button class="btn btn-ghost" style="text-align:center;" data-emp-id="${e.id}">${e.name}</button>`
+      ).join('');
+      list.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedEmployee = fulltime.find(e => e.id === btn.dataset.empId);
+          selectEmployee();
+        });
+      });
+      document.getElementById('name-select-screen').style.display = 'flex';
+    }
+  }
+  init();
 </script>
 </body>
 </html>

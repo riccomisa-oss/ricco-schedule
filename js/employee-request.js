@@ -7,6 +7,7 @@ async function renderRequestTab(employee, branchId) {
   let month = now.getMonth() + 1;
 
   async function render() {
+    const now2 = new Date();
     const [allEmployees, conditions, myRequests, annualStats] = await Promise.all([
       getEmployees(branchId),
       getConditions(branchId),
@@ -45,11 +46,13 @@ async function renderRequestTab(employee, branchId) {
         <div class="form-group" style="margin:0 0 4px 0;">
           <label>날짜</label>
           <input type="date" id="req-date"
-            min="${year}-${String(month).padStart(2,'0')}-01"
+            min="${(year > now2.getFullYear() || month > now2.getMonth() + 1)
+              ? `${year}-${String(month).padStart(2,'0')}-01`
+              : `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,'0')}-${String(now2.getDate()).padStart(2,'0')}`}"
             max="${new Date(year, month, 0).toISOString().split('T')[0]}"
             style="width:100%;box-sizing:border-box;" />
         </div>
-        <div id="date-off-info" style="font-size:12px;color:var(--gray);min-height:18px;margin-bottom:8px;"></div>
+        <div id="date-off-info" style="font-size:12px;min-height:18px;margin-bottom:8px;"></div>
         <div class="form-group" style="margin:0 0 12px 0;">
           <label>유형</label>
           <select id="req-type" style="width:100%;box-sizing:border-box;">
@@ -105,12 +108,22 @@ async function renderRequestTab(employee, branchId) {
       const selectedDate = e.target.value;
       const infoEl = document.getElementById('date-off-info');
       if (!selectedDate || !infoEl) return;
+
+      const myExisting = myRequests.find(r =>
+        r.date === selectedDate && !['rejected', 'override_rejected'].includes(r.status)
+      );
+      if (myExisting) {
+        const label = ['approved', 'override_approved'].includes(myExisting.status) ? '승인됨' : '대기 중';
+        infoEl.textContent = `이미 신청한 날짜입니다 (${label})`;
+        infoEl.style.color = 'var(--red)';
+        return;
+      }
+
       const offNames = approvedAll
         .filter(r => r.date === selectedDate && r.employee_id !== employee.id)
         .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
-      infoEl.textContent = offNames.length
-        ? `이 날 이미 휴무: ${offNames.join(', ')}`
-        : '';
+      infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
+      infoEl.style.color = 'var(--gray)';
     });
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
@@ -124,6 +137,16 @@ async function renderRequestTab(employee, branchId) {
       const date = document.getElementById('req-date').value;
       const type = document.getElementById('req-type').value;
       if (!date) return;
+
+      // 중복 신청 방지
+      const alreadyExists = myRequests.find(r =>
+        r.date === date && !['rejected', 'override_rejected'].includes(r.status)
+      );
+      if (alreadyExists) {
+        document.getElementById('request-result').innerHTML =
+          `<div class="alert alert-error">❌ 해당 날짜에 이미 신청 내역이 있습니다.</div>`;
+        return;
+      }
 
       if (type === 'annual') {
         const myStat = annualStats.find(s => s.emp.id === employee.id);

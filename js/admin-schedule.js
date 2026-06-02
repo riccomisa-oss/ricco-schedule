@@ -491,7 +491,11 @@ async function renderScheduleTab(branchId) {
     }).catch(() => {});
   }
 
-  await render();
+  await render().catch(err => {
+    document.getElementById('schedule').innerHTML =
+      `<div class="card" style="color:var(--red);padding:20px;">스케줄 로드 오류: ${err?.message || err}</div>`;
+    console.error('renderScheduleTab error:', err);
+  });
 }
 
 // ── 구역별 휴무 자동 분배 ─────────────────────────────────

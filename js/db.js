@@ -163,6 +163,14 @@ async function deleteDayOffRequest(id) {
 }
 
 // ── Schedules ─────────────────────────────────────────────
+async function getScheduleIfExists(branchId, year, month) {
+  const { data } = await db
+    .from('schedules').select('*')
+    .eq('branch_id', branchId).eq('year', year).eq('month', month)
+    .maybeSingle();
+  return data || null;
+}
+
 async function getOrCreateSchedule(branchId, year, month) {
   const { data: existing } = await db
     .from('schedules')

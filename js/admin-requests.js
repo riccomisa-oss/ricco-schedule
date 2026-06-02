@@ -39,6 +39,13 @@ async function renderRequestsTab(branchId) {
           ⚠️ 연속 근무 경고: ${warnings.map(w => `<strong>${w.name}</strong> (${w.dates})`).join(', ')}
         </div>` : ''}
 
+      ${requests.some(r => r.type === 'annual') ? `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+          <button class="btn btn-ghost btn-sm" id="delete-all-annual-btn" style="color:var(--red);border:1px solid var(--red);">
+            이 달 연차 전체 삭제
+          </button>
+        </div>` : ''}
+
       <div class="card" style="padding:0;">
         <table class="data-table">
           <thead>
@@ -64,6 +71,7 @@ async function renderRequestsTab(branchId) {
                       <td>
                         ${canApprove ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="doOverride('${r.id}','override_approved')">승인으로</button>` : ''}
                         ${canReject  ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);"   onclick="doOverride('${r.id}','override_rejected')">취소</button>` : ''}
+                        <button class="btn btn-ghost btn-sm" style="color:var(--gray);" onclick="doDelete('${r.id}','${r.type}','${r.employee_id}','${r.date}')">🗑</button>
                       </td>
                     </tr>`;
                 }).join('')
@@ -80,8 +88,25 @@ async function renderRequestsTab(branchId) {
       ({ year, month } = nextMonth(year, month)); render();
     });
 
+    const deleteAllBtn = document.getElementById('delete-all-annual-btn');
+    if (deleteAllBtn) {
+      deleteAllBtn.addEventListener('click', async () => {
+        const annualReqs = requests.filter(r => r.type === 'annual');
+        if (!confirm(`${year}년 ${month}월 연차 신청 ${annualReqs.length}건을 전체 삭제하시겠습니까?`)) return;
+        await Promise.all(annualReqs.map(r => deleteDayOffRequest(r.id)));
+        render();
+      });
+    }
+
     window.doOverride = async (id, newStatus) => {
       await overrideDayOffRequest(id, newStatus);
+      render();
+    };
+
+    window.doDelete = async (id, type, employeeId, date) => {
+      if (!confirm('이 신청을 삭제하시겠습니까?')) return;
+      await deleteDayOffRequest(id);
+      if (type === 'annual') await deleteLedgerUsageByDate(employeeId, date);
       render();
     };
   }

@@ -110,6 +110,20 @@ async function renderRequestsTab(branchId) {
     }
 
     window.doApprove = async (id, type, employeeId, date) => {
+      if (type === 'normal') {
+        const alreadyApproved = requests.filter(r =>
+          r.id !== id &&
+          r.date === date &&
+          ['approved', 'override_approved'].includes(r.status)
+        );
+        if (alreadyApproved.length >= 1) {
+          const names = alreadyApproved
+            .map(r => (r.employees || employees.find(e => e.id === r.employee_id))?.name || '?')
+            .join(', ');
+          const [, m, d] = date.split('-');
+          if (!confirm(`⚠️ ${Number(m)}월 ${Number(d)}일에 이미 ${alreadyApproved.length}명(${names}) 휴무 승인됨.\n계속 승인하시겠습니까?`)) return;
+        }
+      }
       await resolveDayOffRequest(id, 'approved');
       if (type === 'annual') {
         await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });

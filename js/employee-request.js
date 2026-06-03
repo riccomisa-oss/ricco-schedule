@@ -104,37 +104,43 @@ async function renderRequestTab(employee, branchId) {
       </div>
       `}
 
-      <div class="card" style="padding:0;">
-        <table class="data-table">
-          <thead><tr><th>날짜</th><th>유형</th><th>신청 시각</th><th>결과</th><th style="color:var(--gray);font-size:12px;">거절 사유</th><th></th></tr></thead>
-          <tbody>
-            ${myRequests.length === 0
-              ? '<tr><td colspan="5" style="text-align:center;color:var(--gray);">신청 내역이 없습니다.</td></tr>'
-              : myRequests.map(r => {
-                  const isPending  = r.status === 'pending';
-                  const isApproved = ['approved', 'override_approved'].includes(r.status);
-                  const isRejected = ['rejected', 'override_rejected'].includes(r.status);
-                  const canCancel  = !['override_approved', 'override_rejected'].includes(r.status);
-                  const badge = isPending
-                    ? '<span class="badge" style="background:var(--light);color:var(--gray);">대기 중</span>'
-                    : isApproved
-                      ? '<span class="badge badge-approved">승인</span>'
-                      : '<span class="badge badge-rejected">거절</span>';
-                  return `
-                    <tr>
-                      <td>${r.date}</td>
-                      <td>${r.type === 'normal' ? '휴무 요청' : '연차 사용'}</td>
-                      <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
-                      <td>${badge}</td>
-                      <td style="font-size:12px;color:var(--gray);">${isRejected && r.rejection_reason ? r.rejection_reason : ''}</td>
-                      <td>${canCancel
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--gray);margin-bottom:10px;">신청 내역</div>
+        ${myRequests.length === 0
+          ? '<div class="card" style="text-align:center;color:var(--gray);padding:24px;font-size:14px;">신청 내역이 없습니다.</div>'
+          : myRequests.map(r => {
+              const isPending  = r.status === 'pending';
+              const isApproved = ['approved', 'override_approved'].includes(r.status);
+              const isRejected = ['rejected', 'override_rejected'].includes(r.status);
+              const canCancel  = !['override_approved', 'override_rejected'].includes(r.status);
+              const badge = isPending
+                ? '<span class="badge" style="background:var(--light);color:var(--gray);">대기 중</span>'
+                : isApproved
+                  ? '<span class="badge badge-approved">승인</span>'
+                  : '<span class="badge badge-rejected">거절</span>';
+              const [y, m, d] = r.date.split('-');
+              const dateLabel = `${Number(m)}월 ${Number(d)}일`;
+              const typeLabel = r.type === 'normal' ? '휴무 요청' : '연차 사용';
+              return `
+                <div class="card" style="margin-bottom:10px;padding:14px 16px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <div style="font-weight:700;font-size:16px;">${dateLabel}</div>
+                      <div style="font-size:13px;color:var(--gray);margin-top:3px;">${typeLabel}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      ${badge}
+                      ${canCancel
                         ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="cancelRequest('${r.id}','${r.type}','${r.date}')">취소</button>`
-                        : ''}</td>
-                    </tr>`;
-                }).join('')
-            }
-          </tbody>
-        </table>
+                        : ''}
+                    </div>
+                  </div>
+                  ${isRejected && r.rejection_reason
+                    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--light);font-size:12px;color:var(--red);">거절 사유: ${r.rejection_reason}</div>`
+                    : ''}
+                </div>`;
+            }).join('')
+        }
       </div>
     `;
 

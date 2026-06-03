@@ -102,7 +102,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           </div>`;
           const others = workers.filter(w => w.name !== employee.name);
           if (others.length > 0) {
-            html += `<div style="font-size:9px;color:var(--gray);line-height:1.7;">${others.map(w => w.name).join(' · ')}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);line-height:1.7;">${others.map(w => w.name).join(' · ')}</div>`;
           }
         } else if (myEntry.shift_type === 'hall_fixed') {
           html += `<div style="margin:2px 0 3px;padding:3px 0;background:#f3e5f5;border-radius:4px;text-align:center;">
@@ -110,13 +110,13 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           </div>`;
           const opener = workers.find(w => w.shift === 'open');
           if (opener) {
-            html += `<div style="font-size:9px;color:var(--gray);">오픈 ${opener.name}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);">오픈 ${opener.name}</div>`;
           }
         } else {
           // close: 마감 표기 없이 오프너 이름만
           const opener = workers.find(w => w.shift === 'open');
           if (opener) {
-            html += `<div style="font-size:9px;color:var(--gray);margin-top:2px;">오픈 ${opener.name}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);margin-top:2px;">오픈 ${opener.name}</div>`;
           }
         }
         return html;

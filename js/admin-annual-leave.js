@@ -40,14 +40,29 @@ async function renderAnnualLeaveTab(branchId) {
   const el = document.getElementById('annual-leave');
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
 
-  const [employees, stats] = await Promise.all([
+  const currentYear = new Date().getFullYear();
+  const [employees, stats, yearRequests] = await Promise.all([
     getEmployees(branchId),
-    getAnnualLeaveStats(branchId, new Date().getFullYear()),
+    getAnnualLeaveStats(branchId, currentYear),
+    getYearDayOffRequests(branchId, currentYear),
   ]);
 
-  const withHire  = employees.filter(e => e.hire_date);
-  const statsMap  = new Map(stats.map(s => [s.emp.id, s]));
-  const today     = new Date().toISOString().split('T')[0];
+  const withHire   = employees.filter(e => e.hire_date);
+  const statsMap   = new Map(stats.map(s => [s.emp.id, s]));
+  const today      = new Date().toISOString().split('T')[0];
+  const fulltime   = employees.filter(e => e.employment_type !== 'parttime');
+  const months     = Array.from({length: 12}, (_, i) => i + 1);
+  const empMonthStats = fulltime.map(emp => {
+    const normalCounts = months.map(m => {
+      const ms = String(m).padStart(2, '0');
+      return yearRequests.filter(r =>
+        r.employee_id === emp.id && r.type === 'normal' &&
+        r.date.startsWith(`${currentYear}-${ms}`)
+      ).length;
+    });
+    const annualCount = yearRequests.filter(r => r.employee_id === emp.id && r.type === 'annual').length;
+    return { emp, normalCounts, annualCount, total: normalCounts.reduce((a,b)=>a+b,0) + annualCount };
+  });
   let currentEmpId = null;
 
   el.innerHTML = `
@@ -90,6 +105,34 @@ async function renderAnnualLeaveTab(branchId) {
           </table>
         </div>`
     }
+
+    <div style="margin-top:24px;">
+      <h3 style="font-size:14px;font-weight:600;color:var(--gray);margin-bottom:10px;">${currentYear}년 월별 휴무 현황</h3>
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table class="data-table" style="min-width:600px;">
+          <thead>
+            <tr>
+              <th>직원</th>
+              ${months.map(m => `<th style="text-align:center;min-width:32px;">${m}월</th>`).join('')}
+              <th style="text-align:center;">연차</th>
+              <th style="text-align:center;">계</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${empMonthStats.length === 0
+              ? '<tr><td colspan="15" style="text-align:center;color:var(--gray);">데이터 없음</td></tr>'
+              : empMonthStats.map(s => `
+                <tr>
+                  <td><strong>${s.emp.name}</strong></td>
+                  ${s.normalCounts.map(c => `<td style="text-align:center;color:${c>0?'var(--dark)':'#ddd'};">${c>0?c:'·'}</td>`).join('')}
+                  <td style="text-align:center;">${s.annualCount > 0 ? `<span class="badge badge-approved">${s.annualCount}</span>` : '·'}</td>
+                  <td style="text-align:center;font-weight:700;">${s.total > 0 ? s.total : '·'}</td>
+                </tr>`).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="modal-overlay" id="ledger-modal">
       <div class="modal" style="max-width:580px;">

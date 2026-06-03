@@ -1,3 +1,42 @@
+function buildOffCalendar(year, month, requests, employees) {
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const approved = requests.filter(r =>
+    r.type === 'normal' && ['approved', 'override_approved'].includes(r.status)
+  );
+  const offMap = new Map();
+  approved.forEach(r => {
+    if (!offMap.has(r.date)) offMap.set(r.date, []);
+    const emp = r.employees || employees.find(e => e.id === r.employee_id);
+    offMap.get(r.date).push(emp?.name || '?');
+  });
+
+  const dowHdr = ['일','월','화','수','목','금','토'].map((d, i) =>
+    `<th style="text-align:center;padding:6px 2px;font-size:11px;font-weight:600;color:${i===0?'#c62828':i===6?'#1565c0':'var(--gray)'};">${d}</th>`
+  ).join('');
+
+  const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<td style="border:1px solid var(--light);"></td>');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const names = offMap.get(ds) || [];
+    const dow = new Date(year, month - 1, d).getDay();
+    const dateColor = dow === 0 ? '#c62828' : dow === 6 ? '#1565c0' : 'var(--dark)';
+    const crowded = names.length >= 2;
+    cells.push(`<td style="border:1px solid var(--light);vertical-align:top;padding:4px;height:52px;${crowded?'background:#fff3e0;':''}">
+      <div style="font-size:11px;font-weight:600;color:${dateColor};">${d}</div>
+      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n}</div>`).join('')}
+    </td>`);
+  }
+  while (cells.length < totalCells) cells.push('<td style="border:1px solid var(--light);"></td>');
+
+  let rows = '';
+  for (let i = 0; i < cells.length; i += 7) rows += `<tr>${cells.slice(i, i+7).join('')}</tr>`;
+
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${dowHdr}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 async function renderRequestsTab(branchId) {
   const el = document.getElementById('requests');
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
@@ -24,6 +63,16 @@ async function renderRequestsTab(branchId) {
 
     const warnings = getConsecutiveWarnings(employees, requests, year, month, conditions, scheduledOffDates);
 
+    // 신청 마감 후 배너 (매월 16일 09시 이후, 다음달 요청 대기건 있을 때)
+    const nowCheck = new Date();
+    const afterDeadline = nowCheck.getDate() > 16 || (nowCheck.getDate() === 16 && nowCheck.getHours() >= 9);
+    let notifYear = nowCheck.getFullYear(), notifMonth = nowCheck.getMonth() + 2;
+    if (notifMonth > 12) { notifMonth = 1; notifYear++; }
+    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    const closedBanner = afterDeadline && year === notifYear && month === notifMonth && pendingCount > 0
+      ? `<div class="alert alert-info" style="margin-bottom:16px;">📋 이번 달 휴무 신청 마감됨 — 대기 중 <strong>${pendingCount}건</strong>을 검토해 주세요.</div>`
+      : '';
+
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
         <h2>휴무 요청 현황${requests.filter(r => r.status === 'pending').length > 0
@@ -35,6 +84,8 @@ async function renderRequestsTab(branchId) {
           <button class="btn btn-ghost btn-sm" id="next-month-req">▶</button>
         </div>
       </div>
+
+      ${closedBanner}
 
       ${warnings.length ? `
         <div class="alert alert-info" style="margin-bottom:16px;">
@@ -86,6 +137,11 @@ async function renderRequestsTab(branchId) {
             }
           </tbody>
         </table>
+      </div>
+
+      <div class="card" style="margin-top:16px;padding:16px;">
+        <div style="font-size:13px;font-weight:600;color:var(--gray);margin-bottom:10px;">월별 휴무 현황 (승인)</div>
+        ${buildOffCalendar(year, month, requests, employees)}
       </div>
     `;
 

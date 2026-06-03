@@ -40,6 +40,9 @@ async function renderEmployeeScheduleTab(employee, branchId) {
 
       const entries = await getScheduleEntries(schedule.id);
 
+      const annualStats = employee.hire_date ? await getAnnualLeaveStats(branchId, year) : [];
+      const myStat = annualStats.find(s => s.emp.id === employee.id);
+
       const myEntries = entries.filter(e => e.employee_id === employee.id);
       const myEntryMap = new Map(myEntries.map(e => [e.date, e]));
 
@@ -131,6 +134,11 @@ async function renderEmployeeScheduleTab(employee, branchId) {
             <button class="btn btn-ghost btn-sm" id="next-month-es">▶</button>
           </div>
         </div>
+        ${myStat ? `
+        <div style="display:flex;align-items:center;gap:8px;background:#f1f8e9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+          🌿 연차 잔여 <strong style="color:var(--olive);font-size:15px;margin:0 3px;">${myStat.remaining}일</strong>
+          <span style="color:var(--gray);">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+        </div>` : ''}
         ${todaySection}
         <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:12px;">

@@ -260,6 +260,17 @@ async function deleteLedgerEntry(id) {
   if (error) throw error;
 }
 
+async function getYearDayOffRequests(branchId, year) {
+  const { data, error } = await db
+    .from('day_off_requests')
+    .select('*, employees(name, role, branch_id)')
+    .gte('date', `${year}-01-01`)
+    .lte('date', `${year}-12-31`)
+    .in('status', ['approved', 'override_approved']);
+  if (error) throw error;
+  return (data || []).filter(r => r.employees?.branch_id === branchId);
+}
+
 async function deleteLedgerUsageByDate(employeeId, date) {
   const { data, error } = await db
     .from('annual_leave_ledger')

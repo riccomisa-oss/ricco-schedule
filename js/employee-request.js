@@ -84,11 +84,11 @@ async function renderRequestTab(employee, branchId) {
           <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
         </div>` : ''}
 
-        <div style="margin-bottom:16px;">
+        <div id="calendar-section" style="margin-bottom:16px;">
           <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;display:block;margin-bottom:10px;">날짜 선택</label>
           ${(() => {
             const blocked = new Set(
-              myRequests.filter(r => !['rejected','override_rejected'].includes(r.status)).map(r => r.date)
+              myRequests.filter(r => r.type !== 'annual' && !['rejected','override_rejected'].includes(r.status)).map(r => r.date)
             );
             const othersOff = new Set(approvedAll.map(r => r.date));
             const firstDow = new Date(year, month - 1, 1).getDay();
@@ -115,8 +115,11 @@ async function renderRequestTab(employee, branchId) {
           })()}
           <input type="hidden" id="req-date" value="" />
           <div id="selected-date-label" style="margin-top:12px;font-size:14px;font-weight:600;color:var(--dark);min-height:20px;text-align:center;"></div>
+          <div id="date-off-info" style="font-size:12px;min-height:16px;margin-top:8px;color:var(--gray);text-align:center;"></div>
         </div>
-        <div id="date-off-info" style="font-size:12px;min-height:16px;margin-bottom:16px;padding-left:2px;color:var(--gray);text-align:center;"></div>
+        <div id="annual-section" style="display:none;margin-bottom:16px;">
+          <div id="annual-status-display"></div>
+        </div>
 
         <button class="btn btn-primary" onclick="submitDayOffRequest()" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
       </div>
@@ -143,8 +146,8 @@ async function renderRequestTab(employee, branchId) {
                 : isApproved
                   ? '<span class="badge badge-approved">승인</span>'
                   : '<span class="badge badge-rejected">거절</span>';
-              const [y, m, d] = r.date.split('-');
-              const dateLabel = `${Number(m)}월 ${Number(d)}일`;
+              const [, m, d] = r.date.split('-');
+              const dateLabel = r.type === 'annual' ? '연차 1일' : `${Number(m)}월 ${Number(d)}일`;
               const typeLabel = r.type === 'normal' ? '휴무 요청' : '연차 사용';
               return `
                 <div class="card" style="margin-bottom:10px;padding:14px 16px;">
@@ -253,6 +256,47 @@ async function renderRequestTab(employee, branchId) {
           btnAnnual.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
         }
         if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
+
+        const calSection = document.getElementById('calendar-section');
+        const annSection = document.getElementById('annual-section');
+        const annDisplay = document.getElementById('annual-status-display');
+        const reqDate = document.getElementById('req-date');
+
+        if (type === 'annual') {
+          if (calSection) calSection.style.display = 'none';
+          if (annSection) annSection.style.display = 'block';
+          // 캘린더 선택 초기화
+          selectedDates.clear();
+          document.querySelectorAll('[data-date]').forEach(btn => {
+            if (btn.disabled) return;
+            btn.style.background = 'transparent';
+            btn.style.color = btn._origColor || '';
+            btn.style.fontWeight = '500';
+          });
+          // 이미 연차 신청 여부 확인
+          const existingAnnual = myRequests.find(r => r.type === 'annual' && !['rejected', 'override_rejected'].includes(r.status));
+          if (existingAnnual) {
+            const statusText = existingAnnual.status === 'pending' ? '대기 중' : '승인됨';
+            if (annDisplay) annDisplay.innerHTML = `
+              <div style="background:#f1f8e9;border-radius:8px;padding:20px;text-align:center;">
+                <div style="font-size:15px;font-weight:600;color:var(--olive);">✅ 연차 1일 신청 완료</div>
+                <div style="font-size:13px;color:var(--gray);margin-top:6px;">${statusText}</div>
+              </div>`;
+            if (reqDate) reqDate.value = '';
+          } else {
+            if (reqDate) reqDate.value = `${year}-${String(month).padStart(2,'0')}-01`;
+            if (annDisplay) annDisplay.innerHTML = `
+              <div style="background:#f1f8e9;border-radius:8px;padding:24px;text-align:center;">
+                <div style="font-size:28px;margin-bottom:10px;">🌿</div>
+                <div style="font-size:15px;font-weight:700;">${year}년 ${month}월 연차 1일 사용</div>
+                <div style="font-size:12px;color:var(--gray);margin-top:6px;">신청 후 관리자 승인이 필요합니다</div>
+              </div>`;
+          }
+        } else {
+          if (calSection) calSection.style.display = 'block';
+          if (annSection) annSection.style.display = 'none';
+          if (reqDate) reqDate.value = [...selectedDates].sort().join(',');
+        }
       }
 
       if (btnNormal) btnNormal.addEventListener('click', () => setType('normal'));
@@ -272,18 +316,42 @@ async function renderRequestTab(employee, branchId) {
     window.submitDayOffRequest = async () => {
       const resultEl = document.getElementById('request-result');
       try {
-        const dateVal = document.getElementById('req-date').value;
         const type = document.getElementById('req-type').value;
+
+        if (type === 'annual') {
+          const existingAnnual = myRequests.find(r => r.type === 'annual' && !['rejected', 'override_rejected'].includes(r.status));
+          if (existingAnnual) {
+            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 이미 이번 달 연차를 신청하셨습니다.</div>`;
+            return;
+          }
+          const myStat = annualStats.find(s => s.emp.id === employee.id);
+          const remaining = myStat ? myStat.remaining : 0;
+          if (remaining < 1) {
+            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
+            return;
+          }
+          await createDayOffRequest({
+            employeeId: employee.id,
+            date: `${year}-${String(month).padStart(2,'0')}-01`,
+            type: 'annual',
+            status: 'pending',
+            rejectionReason: null,
+          });
+          if (resultEl) resultEl.innerHTML = '<div class="alert alert-success">✅ 연차 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
+          render();
+          return;
+        }
+
+        // 휴무 요청: 날짜 기반
+        const dateVal = document.getElementById('req-date').value;
         if (!dateVal) {
           if (resultEl) resultEl.innerHTML = '<div class="alert alert-error">날짜를 선택해주세요.</div>';
           return;
         }
-
         const dates = dateVal.split(',').filter(Boolean);
-
         for (const date of dates) {
           const alreadyExists = myRequests.find(r =>
-            r.date === date && !['rejected', 'override_rejected'].includes(r.status)
+            r.date === date && r.type !== 'annual' && !['rejected', 'override_rejected'].includes(r.status)
           );
           if (alreadyExists) {
             const [, m, d] = date.split('-');
@@ -291,24 +359,13 @@ async function renderRequestTab(employee, branchId) {
             return;
           }
         }
-
-        if (type === 'annual') {
-          const myStat = annualStats.find(s => s.emp.id === employee.id);
-          const remaining = myStat ? myStat.remaining : 0;
-          if (remaining < dates.length) {
-            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 부족합니다. (잔여 ${remaining}일, 신청 ${dates.length}일)</div>`;
-            return;
-          }
-        }
-
         await Promise.all(dates.map(date => createDayOffRequest({
           employeeId: employee.id,
           date,
-          type,
+          type: 'normal',
           status: 'pending',
           rejectionReason: null,
         })));
-
         if (resultEl) resultEl.innerHTML = `<div class="alert alert-success">✅ ${dates.length}일 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>`;
         render();
       } catch (err) {

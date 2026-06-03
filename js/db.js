@@ -157,6 +157,14 @@ async function overrideDayOffRequest(id, newStatus) {
   if (error) throw error;
 }
 
+async function resolveDayOffRequest(id, status, rejectionReason = null) {
+  const { error } = await db
+    .from('day_off_requests')
+    .update({ status, rejection_reason: rejectionReason || null })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 async function deleteDayOffRequest(id) {
   const { error } = await db.from('day_off_requests').delete().eq('id', id);
   if (error) throw error;

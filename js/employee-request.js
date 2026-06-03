@@ -64,21 +64,27 @@ async function renderRequestTab(employee, branchId) {
 
       <div class="card" style="padding:0;">
         <table class="data-table">
-          <thead><tr><th>날짜</th><th>유형</th><th>신청 시각</th><th>결과</th><th></th></tr></thead>
+          <thead><tr><th>날짜</th><th>유형</th><th>신청 시각</th><th>결과</th><th style="color:var(--gray);font-size:12px;">거절 사유</th><th></th></tr></thead>
           <tbody>
             ${myRequests.length === 0
               ? '<tr><td colspan="5" style="text-align:center;color:var(--gray);">신청 내역이 없습니다.</td></tr>'
               : myRequests.map(r => {
+                  const isPending  = r.status === 'pending';
                   const isApproved = ['approved', 'override_approved'].includes(r.status);
+                  const isRejected = ['rejected', 'override_rejected'].includes(r.status);
                   const canCancel  = !['override_approved', 'override_rejected'].includes(r.status);
+                  const badge = isPending
+                    ? '<span class="badge" style="background:var(--light);color:var(--gray);">대기 중</span>'
+                    : isApproved
+                      ? '<span class="badge badge-approved">승인</span>'
+                      : '<span class="badge badge-rejected">거절</span>';
                   return `
                     <tr>
                       <td>${r.date}</td>
                       <td>${r.type === 'normal' ? '정상 휴무' : '연차 휴무'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
-                      <td><span class="badge badge-${isApproved ? 'approved' : 'rejected'}">
-                        ${isApproved ? '승인' : '거절'}
-                      </span></td>
+                      <td>${badge}</td>
+                      <td style="font-size:12px;color:var(--gray);">${isRejected && r.rejection_reason ? r.rejection_reason : ''}</td>
                       <td>${canCancel
                         ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="cancelRequest('${r.id}','${r.type}','${r.date}')">취소</button>`
                         : ''}</td>
@@ -166,40 +172,16 @@ async function renderRequestTab(employee, branchId) {
         }
       }
 
-      const result = validateDayOffRequest({
-        employee,
-        date,
-        type,
-        allEmployees,
-        approvedRequests: approvedAll,
-        conditions,
-      });
-
-      const status = result.approved ? 'approved' : 'rejected';
       await createDayOffRequest({
         employeeId: employee.id,
         date,
         type,
-        status,
-        rejectionReason: result.reason,
+        status: 'pending',
+        rejectionReason: null,
       });
 
-      if (result.approved && type === 'annual') {
-        await addLedgerEntry({
-          employeeId: employee.id,
-          date,
-          type: 'usage',
-          days: 1,
-          note: '연차 사용',
-        });
-      }
-
-      const msgEl = document.getElementById('request-result');
-      if (result.approved) {
-        msgEl.innerHTML = '<div class="alert alert-success">✅ 휴무가 승인되었습니다.</div>';
-      } else {
-        msgEl.innerHTML = `<div class="alert alert-error">❌ 휴무 신청이 거절되었습니다.<br><small>${result.reason}</small></div>`;
-      }
+      document.getElementById('request-result').innerHTML =
+        '<div class="alert alert-success">✅ 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
       render();
     });
   }

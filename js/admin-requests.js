@@ -26,7 +26,9 @@ async function renderRequestsTab(branchId) {
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2>휴무 요청 현황</h2>
+        <h2>휴무 요청 현황${requests.filter(r => r.status === 'pending').length > 0
+          ? ` <span style="background:var(--red);color:#fff;border-radius:10px;font-size:12px;padding:1px 8px;vertical-align:middle;">${requests.filter(r => r.status === 'pending').length}</span>`
+          : ''}</h2>
         <div style="display:flex;align-items:center;gap:8px;">
           <button class="btn btn-ghost btn-sm" id="prev-month-req">◀</button>
           <span style="font-weight:600;">${year}년 ${month}월</span>
@@ -56,21 +58,27 @@ async function renderRequestsTab(branchId) {
               ? '<tr><td colspan="7" style="text-align:center;color:var(--gray);">신청 내역이 없습니다.</td></tr>'
               : requests.map(r => {
                   const emp = r.employees || employees.find(e => e.id === r.employee_id);
-                  const badgeMap = { approved:'badge-approved', rejected:'badge-rejected', override_approved:'badge-override', override_rejected:'badge-rejected' };
-                  const labelMap = { approved:'승인', rejected:'거절', override_approved:'관리자 승인', override_rejected:'관리자 거절' };
-                  const canApprove = r.status === 'rejected';
-                  const canReject  = r.status === 'approved' || r.status === 'override_approved';
+                  const badgeMap = { pending:'', approved:'badge-approved', rejected:'badge-rejected', override_approved:'badge-override', override_rejected:'badge-rejected' };
+                  const labelMap = { pending:'대기 중', approved:'승인', rejected:'거절', override_approved:'관리자 승인', override_rejected:'관리자 거절' };
+                  const badgeStyle = r.status === 'pending' ? 'background:var(--light);color:var(--gray);' : '';
+                  const isPending  = r.status === 'pending';
+                  const canOverrideApprove = r.status === 'rejected';
+                  const canOverrideReject  = r.status === 'approved' || r.status === 'override_approved';
                   return `
-                    <tr>
+                    <tr${isPending ? ' style="background:#fffbf0;"' : ''}>
                       <td>${emp?.name || '-'}</td>
                       <td>${r.date}</td>
                       <td>${r.type === 'normal' ? '정상 휴무' : '연차'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
-                      <td><span class="badge ${badgeMap[r.status] || ''}">${labelMap[r.status] || r.status}</span></td>
+                      <td><span class="badge ${badgeMap[r.status] || ''}" style="${badgeStyle}">${labelMap[r.status] || r.status}</span></td>
                       <td style="font-size:12px;color:var(--gray);">${r.rejection_reason || '-'}</td>
-                      <td>
-                        ${canApprove ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="doOverride('${r.id}','override_approved')">승인으로</button>` : ''}
-                        ${canReject  ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);"   onclick="doOverride('${r.id}','override_rejected')">취소</button>` : ''}
+                      <td style="white-space:nowrap;">
+                        ${isPending ? `
+                          <button class="btn btn-sm btn-primary" onclick="doApprove('${r.id}','${r.type}','${r.employee_id}','${r.date}')">승인</button>
+                          <button class="btn btn-sm btn-ghost" style="color:var(--red);" onclick="doReject('${r.id}')">거절</button>
+                        ` : ''}
+                        ${canOverrideApprove ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="doOverride('${r.id}','override_approved')">승인으로</button>` : ''}
+                        ${canOverrideReject  ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);"   onclick="doOverride('${r.id}','override_rejected')">취소</button>` : ''}
                         <button class="btn btn-ghost btn-sm" style="color:var(--gray);" onclick="doDelete('${r.id}','${r.type}','${r.employee_id}','${r.date}')">🗑</button>
                       </td>
                     </tr>`;
@@ -100,6 +108,21 @@ async function renderRequestsTab(branchId) {
         render();
       });
     }
+
+    window.doApprove = async (id, type, employeeId, date) => {
+      await resolveDayOffRequest(id, 'approved');
+      if (type === 'annual') {
+        await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+      }
+      render();
+    };
+
+    window.doReject = async (id) => {
+      const reason = prompt('거절 사유를 입력하세요 (선택 사항)');
+      if (reason === null) return;
+      await resolveDayOffRequest(id, 'rejected', reason.trim() || null);
+      render();
+    };
 
     window.doOverride = async (id, newStatus) => {
       await overrideDayOffRequest(id, newStatus);

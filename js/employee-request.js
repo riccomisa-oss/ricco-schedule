@@ -118,7 +118,7 @@ async function renderRequestTab(employee, branchId) {
         </div>
         <div id="date-off-info" style="font-size:12px;min-height:16px;margin-bottom:16px;padding-left:2px;color:var(--gray);text-align:center;"></div>
 
-        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
+        <button class="btn btn-primary" onclick="submitDayOffRequest()" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
       </div>
       ` : `
       <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
@@ -248,47 +248,47 @@ async function renderRequestTab(employee, branchId) {
 
     if (!isRequestPeriodOpen()) return;
 
-    document.getElementById('submit-req-btn').addEventListener('click', async () => {
-      const date = document.getElementById('req-date').value;
-      const type = document.getElementById('req-type').value;
-      if (!date) {
-        document.getElementById('request-result').innerHTML =
-          '<div class="alert alert-error">날짜를 선택해주세요.</div>';
-        return;
-      }
-
-      // 중복 신청 방지
-      const alreadyExists = myRequests.find(r =>
-        r.date === date && !['rejected', 'override_rejected'].includes(r.status)
-      );
-      if (alreadyExists) {
-        document.getElementById('request-result').innerHTML =
-          `<div class="alert alert-error">❌ 해당 날짜에 이미 신청 내역이 있습니다.</div>`;
-        return;
-      }
-
-      if (type === 'annual') {
-        const myStat = annualStats.find(s => s.emp.id === employee.id);
-        const remaining = myStat ? myStat.remaining : 0;
-        if (remaining <= 0) {
-          document.getElementById('request-result').innerHTML =
-            `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
+    window.submitDayOffRequest = async () => {
+      const resultEl = document.getElementById('request-result');
+      try {
+        const date = document.getElementById('req-date').value;
+        const type = document.getElementById('req-type').value;
+        if (!date) {
+          if (resultEl) resultEl.innerHTML = '<div class="alert alert-error">날짜를 선택해주세요.</div>';
           return;
         }
+
+        const alreadyExists = myRequests.find(r =>
+          r.date === date && !['rejected', 'override_rejected'].includes(r.status)
+        );
+        if (alreadyExists) {
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 해당 날짜에 이미 신청 내역이 있습니다.</div>`;
+          return;
+        }
+
+        if (type === 'annual') {
+          const myStat = annualStats.find(s => s.emp.id === employee.id);
+          const remaining = myStat ? myStat.remaining : 0;
+          if (remaining <= 0) {
+            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
+            return;
+          }
+        }
+
+        await createDayOffRequest({
+          employeeId: employee.id,
+          date,
+          type,
+          status: 'pending',
+          rejectionReason: null,
+        });
+
+        if (resultEl) resultEl.innerHTML = '<div class="alert alert-success">✅ 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
+        render();
+      } catch (err) {
+        if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 오류가 발생했습니다: ${err?.message || err}</div>`;
       }
-
-      await createDayOffRequest({
-        employeeId: employee.id,
-        date,
-        type,
-        status: 'pending',
-        rejectionReason: null,
-      });
-
-      document.getElementById('request-result').innerHTML =
-        '<div class="alert alert-success">✅ 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
-      render();
-    });
+    };
   }
 
   await render();

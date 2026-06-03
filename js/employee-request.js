@@ -183,37 +183,58 @@ async function renderRequestTab(employee, branchId) {
     };
 
     if (isRequestPeriodOpen()) {
+      const selectedDates = new Set();
+
       window.pickDate = (dateStr) => {
-        // 이전 선택 초기화
-        document.querySelectorAll('[data-date]').forEach(btn => {
-          if (btn.disabled) return;
-          btn.style.background = 'transparent';
-          btn.style.color = btn._origColor || '';
-          btn.style.fontWeight = '500';
-        });
-        // 선택 표시
-        const btn = document.querySelector(`[data-date="${dateStr}"]`);
-        if (btn) {
-          if (!btn._origColor) btn._origColor = btn.style.color;
-          btn.style.background = 'var(--red)';
-          btn.style.color = '#fff';
-          btn.style.fontWeight = '700';
+        if (selectedDates.has(dateStr)) {
+          selectedDates.delete(dateStr);
+          const btn = document.querySelector(`[data-date="${dateStr}"]`);
+          if (btn) {
+            btn.style.background = 'transparent';
+            btn.style.color = btn._origColor || '';
+            btn.style.fontWeight = '500';
+          }
+        } else {
+          if (selectedDates.size >= 3) {
+            const lbl = document.getElementById('selected-date-label');
+            if (lbl) lbl.textContent = '최대 3일까지 선택 가능합니다.';
+            return;
+          }
+          selectedDates.add(dateStr);
+          const btn = document.querySelector(`[data-date="${dateStr}"]`);
+          if (btn) {
+            if (!btn._origColor) btn._origColor = btn.style.color;
+            btn.style.background = 'var(--red)';
+            btn.style.color = '#fff';
+            btn.style.fontWeight = '700';
+          }
         }
-        document.getElementById('req-date').value = dateStr;
 
-        // 날짜 레이블
-        const [y, m, d] = dateStr.split('-');
-        const dow = ['일','월','화','수','목','금','토'][new Date(dateStr).getDay()];
+        document.getElementById('req-date').value = [...selectedDates].sort().join(',');
+
         const lbl = document.getElementById('selected-date-label');
-        if (lbl) lbl.textContent = `${Number(m)}월 ${Number(d)}일 (${dow})`;
+        if (lbl) {
+          if (selectedDates.size === 0) {
+            lbl.textContent = '';
+          } else {
+            const labels = [...selectedDates].sort().map(ds => {
+              const [, m, d] = ds.split('-');
+              const dow = ['일','월','화','수','목','금','토'][new Date(ds).getDay()];
+              return `${Number(m)}월 ${Number(d)}일 (${dow})`;
+            });
+            lbl.textContent = labels.join(' · ') + `  (${selectedDates.size}/3)`;
+          }
+        }
 
-        // 다른 직원 휴무 정보
         const infoEl = document.getElementById('date-off-info');
         if (!infoEl) return;
-        const offNames = approvedAll
-          .filter(r => r.date === dateStr && r.employee_id !== employee.id)
-          .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
-        infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
+        const allOffNames = new Set();
+        selectedDates.forEach(ds => {
+          approvedAll
+            .filter(r => r.date === ds && r.employee_id !== employee.id)
+            .forEach(r => allOffNames.add(r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?'));
+        });
+        infoEl.textContent = allOffNames.size ? `선택한 날 이미 휴무: ${[...allOffNames].join(', ')}` : '';
       };
 
       // 토글 버튼 (연차 직원만)
@@ -251,39 +272,44 @@ async function renderRequestTab(employee, branchId) {
     window.submitDayOffRequest = async () => {
       const resultEl = document.getElementById('request-result');
       try {
-        const date = document.getElementById('req-date').value;
+        const dateVal = document.getElementById('req-date').value;
         const type = document.getElementById('req-type').value;
-        if (!date) {
+        if (!dateVal) {
           if (resultEl) resultEl.innerHTML = '<div class="alert alert-error">날짜를 선택해주세요.</div>';
           return;
         }
 
-        const alreadyExists = myRequests.find(r =>
-          r.date === date && !['rejected', 'override_rejected'].includes(r.status)
-        );
-        if (alreadyExists) {
-          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 해당 날짜에 이미 신청 내역이 있습니다.</div>`;
-          return;
+        const dates = dateVal.split(',').filter(Boolean);
+
+        for (const date of dates) {
+          const alreadyExists = myRequests.find(r =>
+            r.date === date && !['rejected', 'override_rejected'].includes(r.status)
+          );
+          if (alreadyExists) {
+            const [, m, d] = date.split('-');
+            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ ${Number(m)}월 ${Number(d)}일에 이미 신청 내역이 있습니다.</div>`;
+            return;
+          }
         }
 
         if (type === 'annual') {
           const myStat = annualStats.find(s => s.emp.id === employee.id);
           const remaining = myStat ? myStat.remaining : 0;
-          if (remaining <= 0) {
-            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
+          if (remaining < dates.length) {
+            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 부족합니다. (잔여 ${remaining}일, 신청 ${dates.length}일)</div>`;
             return;
           }
         }
 
-        await createDayOffRequest({
+        await Promise.all(dates.map(date => createDayOffRequest({
           employeeId: employee.id,
           date,
           type,
           status: 'pending',
           rejectionReason: null,
-        });
+        })));
 
-        if (resultEl) resultEl.innerHTML = '<div class="alert alert-success">✅ 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
+        if (resultEl) resultEl.innerHTML = `<div class="alert alert-success">✅ ${dates.length}일 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>`;
         render();
       } catch (err) {
         if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 오류가 발생했습니다: ${err?.message || err}</div>`;

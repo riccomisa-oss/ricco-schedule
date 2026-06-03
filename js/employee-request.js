@@ -1,9 +1,8 @@
 function isRequestPeriodOpen() {
-  return true; // 테스트용 — 실제 배포 전 원래 조건으로 복원
-  // const now = new Date();
-  // const day = now.getDate();
-  // const hour = now.getHours();
-  // return (day === 15 && hour >= 9) || (day === 16 && hour < 9);
+  const now = new Date();
+  const day = now.getDate();
+  const hour = now.getHours();
+  return (day === 15 && hour >= 9) || (day === 16 && hour < 9);
 }
 
 function getNextPeriodLabel() {

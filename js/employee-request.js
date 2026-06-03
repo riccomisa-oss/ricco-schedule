@@ -67,13 +67,13 @@ async function renderRequestTab(employee, branchId) {
 
         ${employee.hire_date != null ? `
         <div style="display:flex;gap:8px;margin-bottom:20px;">
-          <button id="type-normal" style="flex:1;padding:10px 0;border-radius:8px;border:2px solid var(--primary);background:var(--primary);color:#fff;font-weight:600;font-size:14px;cursor:pointer;">휴무 요청</button>
-          <button id="type-annual" style="flex:1;padding:10px 0;border-radius:8px;border:2px solid var(--light);background:#fff;color:var(--gray);font-weight:600;font-size:14px;cursor:pointer;">연차 사용</button>
+          <button id="type-normal" class="btn btn-primary" style="flex:1;padding:10px 0;font-size:14px;font-weight:700;">휴무 요청</button>
+          <button id="type-annual" class="btn btn-ghost" style="flex:1;padding:10px 0;font-size:14px;font-weight:600;">연차 사용</button>
         </div>
         <input type="hidden" id="req-type" value="normal" />
         ` : `
         <div style="margin-bottom:16px;">
-          <span style="display:inline-block;padding:8px 18px;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;font-size:14px;">휴무 요청</span>
+          <button class="btn btn-primary" style="padding:10px 24px;font-size:14px;font-weight:700;pointer-events:none;">휴무 요청</button>
         </div>
         <input type="hidden" id="req-type" value="normal" />
         `}
@@ -184,12 +184,10 @@ async function renderRequestTab(employee, branchId) {
         reqTypeEl.value = type;
         if (btnNormal && btnAnnual) {
           const isAnnual = type === 'annual';
-          btnNormal.style.background   = isAnnual ? '#fff' : 'var(--primary)';
-          btnNormal.style.color        = isAnnual ? 'var(--gray)' : '#fff';
-          btnNormal.style.borderColor  = isAnnual ? 'var(--light)' : 'var(--primary)';
-          btnAnnual.style.background   = isAnnual ? 'var(--olive)' : '#fff';
-          btnAnnual.style.color        = isAnnual ? '#fff' : 'var(--gray)';
-          btnAnnual.style.borderColor  = isAnnual ? 'var(--olive)' : 'var(--light)';
+          btnNormal.className = isAnnual ? 'btn btn-ghost' : 'btn btn-primary';
+          btnNormal.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
+          btnAnnual.className = isAnnual ? 'btn btn-primary' : 'btn btn-ghost';
+          btnAnnual.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
         }
         if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
       }

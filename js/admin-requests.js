@@ -68,7 +68,7 @@ async function renderRequestsTab(branchId) {
                     <tr${isPending ? ' style="background:#fffbf0;"' : ''}>
                       <td>${emp?.name || '-'}</td>
                       <td>${r.date}</td>
-                      <td>${r.type === 'normal' ? '정상 휴무' : '연차'}</td>
+                      <td>${r.type === 'normal' ? '휴무 요청' : '연차 사용'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
                       <td><span class="badge ${badgeMap[r.status] || ''}" style="${badgeStyle}">${labelMap[r.status] || r.status}</span></td>
                       <td style="font-size:12px;color:var(--gray);">${r.rejection_reason || '-'}</td>

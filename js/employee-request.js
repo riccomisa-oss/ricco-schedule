@@ -63,29 +63,37 @@ async function renderRequestTab(employee, branchId) {
       <div id="request-result" style="margin-bottom:12px;"></div>
 
       ${isRequestPeriodOpen() ? `
-      <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin-bottom:4px;">휴무 신청</h3>
-        <p style="font-size:12px;color:var(--gray);margin-bottom:12px;">다음달(${year}년 ${month}월) 휴무·연차를 신청하세요.</p>
-        <div class="form-group" style="margin:0 0 4px 0;">
-          <label>날짜</label>
+      <div class="card" style="margin-bottom:16px;padding:20px;">
+
+        ${employee.hire_date != null ? `
+        <div style="display:flex;gap:8px;margin-bottom:20px;">
+          <button id="type-normal" style="flex:1;padding:10px 0;border-radius:8px;border:2px solid var(--primary);background:var(--primary);color:#fff;font-weight:600;font-size:14px;cursor:pointer;">휴무 요청</button>
+          <button id="type-annual" style="flex:1;padding:10px 0;border-radius:8px;border:2px solid var(--light);background:#fff;color:var(--gray);font-weight:600;font-size:14px;cursor:pointer;">연차 사용</button>
+        </div>
+        <input type="hidden" id="req-type" value="normal" />
+        ` : `
+        <div style="margin-bottom:16px;">
+          <span style="display:inline-block;padding:8px 18px;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;font-size:14px;">휴무 요청</span>
+        </div>
+        <input type="hidden" id="req-type" value="normal" />
+        `}
+
+        ${myStat ? `
+        <div id="annual-info" style="display:none;background:#f1f8e9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+          연차 잔여 <strong style="color:var(--olive);font-size:15px;">${myStat.remaining}일</strong>
+          <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+        </div>` : ''}
+
+        <div style="margin-bottom:6px;">
+          <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;">날짜 선택</label>
           <input type="date" id="req-date"
             min="${year}-${String(month).padStart(2,'0')}-01"
             max="${new Date(year, month, 0).toISOString().split('T')[0]}"
-            style="width:100%;box-sizing:border-box;" />
+            style="width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1.5px solid var(--light);border-radius:8px;font-size:15px;" />
         </div>
-        <div id="date-off-info" style="font-size:12px;min-height:18px;margin-bottom:8px;"></div>
-        <div class="form-group" style="margin:0 0 8px 0;">
-          <label>유형</label>
-          <select id="req-type" style="width:100%;box-sizing:border-box;">
-            <option value="normal">정상 휴무</option>
-            ${employee.hire_date != null ? '<option value="annual">연차 휴무</option>' : ''}
-          </select>
-        </div>
-        ${myStat ? `<div id="annual-info" style="font-size:12px;color:var(--gray);margin-bottom:12px;display:none;">
-          연차 잔여 <strong style="color:var(--olive);">${myStat.remaining}일</strong>
-          <span>(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
-        </div>` : ''}
-        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
+        <div id="date-off-info" style="font-size:12px;min-height:16px;margin-bottom:16px;padding-left:2px;"></div>
+
+        <button class="btn btn-primary" id="submit-req-btn" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
       </div>
       ` : `
       <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
@@ -115,7 +123,7 @@ async function renderRequestTab(employee, branchId) {
                   return `
                     <tr>
                       <td>${r.date}</td>
-                      <td>${r.type === 'normal' ? '정상 휴무' : '연차 휴무'}</td>
+                      <td>${r.type === 'normal' ? '휴무 요청' : '연차 사용'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
                       <td>${badge}</td>
                       <td style="font-size:12px;color:var(--gray);">${isRejected && r.rejection_reason ? r.rejection_reason : ''}</td>
@@ -166,13 +174,28 @@ async function renderRequestTab(employee, branchId) {
         infoEl.style.color = 'var(--gray)';
       });
 
+      // 토글 버튼 (연차 직원만)
+      const btnNormal = document.getElementById('type-normal');
+      const btnAnnual = document.getElementById('type-annual');
       const reqTypeEl = document.getElementById('req-type');
-      if (reqTypeEl) {
-        reqTypeEl.addEventListener('change', () => {
-          const annualInfo = document.getElementById('annual-info');
-          if (annualInfo) annualInfo.style.display = reqTypeEl.value === 'annual' ? 'block' : 'none';
-        });
+      const annualInfo = document.getElementById('annual-info');
+
+      function setType(type) {
+        reqTypeEl.value = type;
+        if (btnNormal && btnAnnual) {
+          const isAnnual = type === 'annual';
+          btnNormal.style.background   = isAnnual ? '#fff' : 'var(--primary)';
+          btnNormal.style.color        = isAnnual ? 'var(--gray)' : '#fff';
+          btnNormal.style.borderColor  = isAnnual ? 'var(--light)' : 'var(--primary)';
+          btnAnnual.style.background   = isAnnual ? 'var(--olive)' : '#fff';
+          btnAnnual.style.color        = isAnnual ? '#fff' : 'var(--gray)';
+          btnAnnual.style.borderColor  = isAnnual ? 'var(--olive)' : 'var(--light)';
+        }
+        if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
       }
+
+      if (btnNormal) btnNormal.addEventListener('click', () => setType('normal'));
+      if (btnAnnual) btnAnnual.addEventListener('click', () => setType('annual'));
     }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {

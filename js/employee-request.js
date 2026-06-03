@@ -1,10 +1,35 @@
+function isRequestPeriodOpen() {
+  const now = new Date();
+  const day = now.getDate();
+  const hour = now.getHours();
+  return (day === 15 && hour >= 9) || (day === 16 && hour < 9);
+}
+
+function getNextPeriodLabel() {
+  const now = new Date();
+  const d = now.getDate();
+  const h = now.getHours();
+  let y = now.getFullYear();
+  let m = now.getMonth(); // 0-indexed
+  if (d > 16 || (d === 16 && h >= 9)) {
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  const fmt = (date) => date.toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${fmt(new Date(y, m, 15, 9, 0))} ~ ${fmt(new Date(y, m, 16, 9, 0))}`;
+}
+
 async function renderRequestTab(employee, branchId) {
   const el = document.getElementById('emp-request');
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
 
   const now = new Date();
+  // 신청 기간(15일 09시~16일 09시)에는 다음달로 기본 설정
   let year = now.getFullYear();
   let month = now.getMonth() + 1;
+  if (isRequestPeriodOpen()) {
+    ({ year, month } = nextMonth(year, month));
+  }
 
   async function render() {
     const now2 = new Date();
@@ -36,14 +61,14 @@ async function renderRequestTab(employee, branchId) {
 
       <div id="request-result" style="margin-bottom:12px;"></div>
 
+      ${isRequestPeriodOpen() ? `
       <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin-bottom:12px;">휴무 신청</h3>
+        <h3 style="margin-bottom:4px;">휴무 신청</h3>
+        <p style="font-size:12px;color:var(--gray);margin-bottom:12px;">다음달(${year}년 ${month}월) 휴무·연차를 신청하세요.</p>
         <div class="form-group" style="margin:0 0 4px 0;">
           <label>날짜</label>
           <input type="date" id="req-date"
-            min="${(year > now2.getFullYear() || (year === now2.getFullYear() && month > now2.getMonth() + 1))
-              ? `${year}-${String(month).padStart(2,'0')}-01`
-              : `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,'0')}-${String(now2.getDate()).padStart(2,'0')}`}"
+            min="${year}-${String(month).padStart(2,'0')}-01"
             max="${new Date(year, month, 0).toISOString().split('T')[0]}"
             style="width:100%;box-sizing:border-box;" />
         </div>
@@ -61,6 +86,14 @@ async function renderRequestTab(employee, branchId) {
         </div>` : ''}
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;">신청</button>
       </div>
+      ` : `
+      <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
+        <div style="font-size:28px;margin-bottom:10px;">🔒</div>
+        <div style="font-weight:600;margin-bottom:6px;">현재 신청 기간이 아닙니다</div>
+        <div style="font-size:13px;color:var(--gray);">매월 15일 09:00 ~ 16일 09:00</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:6px;">다음 신청 기간: ${getNextPeriodLabel()}</div>
+      </div>
+      `}
 
       <div class="card" style="padding:0;">
         <table class="data-table">
@@ -109,34 +142,36 @@ async function renderRequestTab(employee, branchId) {
       }
     };
 
-    document.getElementById('req-date').addEventListener('change', (e) => {
-      const selectedDate = e.target.value;
-      const infoEl = document.getElementById('date-off-info');
-      if (!selectedDate || !infoEl) return;
+    if (isRequestPeriodOpen()) {
+      document.getElementById('req-date').addEventListener('change', (e) => {
+        const selectedDate = e.target.value;
+        const infoEl = document.getElementById('date-off-info');
+        if (!selectedDate || !infoEl) return;
 
-      const myExisting = myRequests.find(r =>
-        r.date === selectedDate && !['rejected', 'override_rejected'].includes(r.status)
-      );
-      if (myExisting) {
-        const label = ['approved', 'override_approved'].includes(myExisting.status) ? '승인됨' : '대기 중';
-        infoEl.textContent = `이미 신청한 날짜입니다 (${label})`;
-        infoEl.style.color = 'var(--red)';
-        return;
-      }
+        const myExisting = myRequests.find(r =>
+          r.date === selectedDate && !['rejected', 'override_rejected'].includes(r.status)
+        );
+        if (myExisting) {
+          const label = ['approved', 'override_approved'].includes(myExisting.status) ? '승인됨' : '대기 중';
+          infoEl.textContent = `이미 신청한 날짜입니다 (${label})`;
+          infoEl.style.color = 'var(--red)';
+          return;
+        }
 
-      const offNames = approvedAll
-        .filter(r => r.date === selectedDate && r.employee_id !== employee.id)
-        .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
-      infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
-      infoEl.style.color = 'var(--gray)';
-    });
-
-    const reqTypeEl = document.getElementById('req-type');
-    if (reqTypeEl) {
-      reqTypeEl.addEventListener('change', () => {
-        const annualInfo = document.getElementById('annual-info');
-        if (annualInfo) annualInfo.style.display = reqTypeEl.value === 'annual' ? 'block' : 'none';
+        const offNames = approvedAll
+          .filter(r => r.date === selectedDate && r.employee_id !== employee.id)
+          .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
+        infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
+        infoEl.style.color = 'var(--gray)';
       });
+
+      const reqTypeEl = document.getElementById('req-type');
+      if (reqTypeEl) {
+        reqTypeEl.addEventListener('change', () => {
+          const annualInfo = document.getElementById('annual-info');
+          if (annualInfo) annualInfo.style.display = reqTypeEl.value === 'annual' ? 'block' : 'none';
+        });
+      }
     }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
@@ -146,6 +181,8 @@ async function renderRequestTab(employee, branchId) {
     document.getElementById('next-month-emp').addEventListener('click', () => {
       ({ year, month } = nextMonth(year, month)); render();
     });
+
+    if (!isRequestPeriodOpen()) return;
 
     document.getElementById('submit-req-btn').addEventListener('click', async () => {
       const date = document.getElementById('req-date').value;

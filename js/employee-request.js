@@ -84,14 +84,39 @@ async function renderRequestTab(employee, branchId) {
           <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
         </div>` : ''}
 
-        <div style="margin-bottom:6px;">
-          <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;">날짜 선택</label>
-          <input type="date" id="req-date"
-            min="${year}-${String(month).padStart(2,'0')}-01"
-            max="${new Date(year, month, 0).toISOString().split('T')[0]}"
-            style="width:100%;box-sizing:border-box;margin-top:4px;padding:12px;border:1.5px solid var(--light);border-radius:8px;font-size:15px;" />
+        <div style="margin-bottom:16px;">
+          <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;display:block;margin-bottom:10px;">날짜 선택</label>
+          ${(() => {
+            const blocked = new Set(
+              myRequests.filter(r => !['rejected','override_rejected'].includes(r.status)).map(r => r.date)
+            );
+            const othersOff = new Set(approvedAll.map(r => r.date));
+            const firstDow = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const dowHdr = ['일','월','화','수','목','금','토'].map((d, i) =>
+              `<div style="text-align:center;font-size:11px;font-weight:600;color:${i===0?'#c62828':i===6?'#1565c0':'var(--gray)'};padding:4px 0;">${d}</div>`
+            ).join('');
+            let cells = '';
+            for (let i = 0; i < firstDow; i++) cells += '<div></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+              const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+              const dow = new Date(year, month - 1, d).getDay();
+              const isSun = dow === 0, isSat = dow === 6;
+              const isHol = isHolidayOrWeekend(year, month, d) && !isSun && !isSat;
+              const isBlocked = blocked.has(ds);
+              const hasOff = othersOff.has(ds);
+              const textColor = isBlocked ? '#ccc' : (isSun || isHol) ? '#c62828' : isSat ? '#1565c0' : 'var(--dark)';
+              cells += `<button data-date="${ds}" onclick="pickDate('${ds}')" ${isBlocked ? 'disabled' : ''}
+                style="border:none;background:transparent;color:${textColor};border-radius:50%;padding:0;width:100%;aspect-ratio:1;font-size:13px;font-weight:500;cursor:${isBlocked?'not-allowed':'pointer'};${isBlocked?'opacity:0.3;':''}position:relative;">
+                ${d}${hasOff && !isBlocked ? '<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--red);display:block;"></span>' : ''}
+              </button>`;
+            }
+            return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">${dowHdr}${cells}</div>`;
+          })()}
+          <input type="hidden" id="req-date" value="" />
+          <div id="selected-date-label" style="margin-top:12px;font-size:14px;font-weight:600;color:var(--dark);min-height:20px;text-align:center;"></div>
         </div>
-        <div id="date-off-info" style="font-size:12px;min-height:16px;margin-bottom:16px;padding-left:2px;"></div>
+        <div id="date-off-info" style="font-size:12px;min-height:16px;margin-bottom:16px;padding-left:2px;color:var(--gray);text-align:center;"></div>
 
         <button class="btn btn-primary" id="submit-req-btn" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
       </div>
@@ -158,27 +183,38 @@ async function renderRequestTab(employee, branchId) {
     };
 
     if (isRequestPeriodOpen()) {
-      document.getElementById('req-date').addEventListener('change', (e) => {
-        const selectedDate = e.target.value;
-        const infoEl = document.getElementById('date-off-info');
-        if (!selectedDate || !infoEl) return;
-
-        const myExisting = myRequests.find(r =>
-          r.date === selectedDate && !['rejected', 'override_rejected'].includes(r.status)
-        );
-        if (myExisting) {
-          const label = ['approved', 'override_approved'].includes(myExisting.status) ? '승인됨' : '대기 중';
-          infoEl.textContent = `이미 신청한 날짜입니다 (${label})`;
-          infoEl.style.color = 'var(--red)';
-          return;
+      window.pickDate = (dateStr) => {
+        // 이전 선택 초기화
+        document.querySelectorAll('[data-date]').forEach(btn => {
+          if (btn.disabled) return;
+          btn.style.background = 'transparent';
+          btn.style.color = btn._origColor || '';
+          btn.style.fontWeight = '500';
+        });
+        // 선택 표시
+        const btn = document.querySelector(`[data-date="${dateStr}"]`);
+        if (btn) {
+          if (!btn._origColor) btn._origColor = btn.style.color;
+          btn.style.background = 'var(--red)';
+          btn.style.color = '#fff';
+          btn.style.fontWeight = '700';
         }
+        document.getElementById('req-date').value = dateStr;
 
+        // 날짜 레이블
+        const [y, m, d] = dateStr.split('-');
+        const dow = ['일','월','화','수','목','금','토'][new Date(dateStr).getDay()];
+        const lbl = document.getElementById('selected-date-label');
+        if (lbl) lbl.textContent = `${Number(m)}월 ${Number(d)}일 (${dow})`;
+
+        // 다른 직원 휴무 정보
+        const infoEl = document.getElementById('date-off-info');
+        if (!infoEl) return;
         const offNames = approvedAll
-          .filter(r => r.date === selectedDate && r.employee_id !== employee.id)
+          .filter(r => r.date === dateStr && r.employee_id !== employee.id)
           .map(r => r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?');
         infoEl.textContent = offNames.length ? `이 날 이미 휴무: ${offNames.join(', ')}` : '';
-        infoEl.style.color = 'var(--gray)';
-      });
+      };
 
       // 토글 버튼 (연차 직원만)
       const btnNormal = document.getElementById('type-normal');
@@ -215,7 +251,11 @@ async function renderRequestTab(employee, branchId) {
     document.getElementById('submit-req-btn').addEventListener('click', async () => {
       const date = document.getElementById('req-date').value;
       const type = document.getElementById('req-type').value;
-      if (!date) return;
+      if (!date) {
+        document.getElementById('request-result').innerHTML =
+          '<div class="alert alert-error">날짜를 선택해주세요.</div>';
+        return;
+      }
 
       // 중복 신청 방지
       const alreadyExists = myRequests.find(r =>

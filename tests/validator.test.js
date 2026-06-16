@@ -115,38 +115,50 @@ test('정상 휴무 8회 초과 시 거절', () => {
   expect(result.reason).toContain('정상 휴무');
 });
 
-// 조건 4: 연차 월 최대 1회
-test('연차 1회 초과 시 거절', () => {
-  const approvedRequests = [
-    { id: 'r1', employee_id: 'emp-1', date: '2026-06-02', type: 'annual', status: 'approved', requested_at: new Date().toISOString() },
-  ];
+// 조건 4: 연차는 입사일(hire_date) 설정된 직원만 신청 가능
+// (월별 횟수 cap은 입사일 기반 잔여일/ledger 모델로 대체되어 validator에서 제거됨)
+test('연차 — 입사일 미설정 직원은 거절', () => {
   const result = validateDayOffRequest({
-    employee: mockEmployee,
+    employee: mockEmployee, // hire_date 없음
     date: '2026-06-09',
     type: 'annual',
     allEmployees,
-    approvedRequests,
+    approvedRequests: [],
     conditions: baseConditions,
   });
   expect(result.approved).toBe(false);
-  expect(result.reason).toContain('연차');
+  expect(result.reason).toContain('입사일');
 });
 
-// override_approved도 승인으로 카운트
+test('연차 — 입사일 설정된 직원은 게이트 통과', () => {
+  const result = validateDayOffRequest({
+    employee: { ...mockEmployee, hire_date: '2020-01-01' },
+    date: '2026-06-09', // 평일, 충돌 없음
+    type: 'annual',
+    allEmployees,
+    approvedRequests: [],
+    conditions: baseConditions,
+  });
+  expect(result.approved).toBe(true);
+  expect(result.reason).toBeNull();
+});
+
+// override_approved 상태도 승인으로 간주되어 횟수 카운트에 포함됨 (주말 휴무 cap으로 검증)
 test('override_approved 상태도 횟수 카운트에 포함', () => {
   const approvedRequests = [
-    { id: 'r1', employee_id: 'emp-1', date: '2026-06-02', type: 'annual', status: 'override_approved', requested_at: new Date().toISOString() },
+    { id: 'r1', employee_id: 'emp-1', date: '2026-06-06', type: 'normal', status: 'override_approved', requested_at: new Date().toISOString() },
+    { id: 'r2', employee_id: 'emp-1', date: '2026-06-07', type: 'normal', status: 'override_approved', requested_at: new Date().toISOString() },
   ];
   const result = validateDayOffRequest({
     employee: mockEmployee,
-    date: '2026-06-09',
-    type: 'annual',
+    date: '2026-06-13', // 토요일 — override_approved 주말 2건이 카운트되면 3번째라 거절
+    type: 'normal',
     allEmployees,
     approvedRequests,
     conditions: baseConditions,
   });
   expect(result.approved).toBe(false);
-  expect(result.reason).toContain('연차');
+  expect(result.reason).toContain('주말 휴무');
 });
 
 // 홀 정직원 최소 인원

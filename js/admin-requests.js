@@ -63,9 +63,9 @@ async function renderRequestsTab(branchId) {
 
     const warnings = getConsecutiveWarnings(employees, requests, year, month, conditions, scheduledOffDates);
 
-    // 신청 마감 후 배너 (매월 16일 09시 이후, 다음달 요청 대기건 있을 때)
+    // 신청 마감 후 배너 (매월 20일 23시 이후, 다음달 요청 대기건 있을 때)
     const nowCheck = new Date();
-    const afterDeadline = nowCheck.getDate() > 16 || (nowCheck.getDate() === 16 && nowCheck.getHours() >= 9);
+    const afterDeadline = nowCheck.getDate() > 20 || (nowCheck.getDate() === 20 && nowCheck.getHours() >= 23);
     let notifYear = nowCheck.getFullYear(), notifMonth = nowCheck.getMonth() + 2;
     if (notifMonth > 12) { notifMonth = 1; notifYear++; }
     const pendingCount = requests.filter(r => r.status === 'pending').length;

@@ -2,7 +2,8 @@ function isRequestPeriodOpen() {
   const now = new Date();
   const day = now.getDate();
   const hour = now.getHours();
-  return (day === 15 && hour >= 9) || (day === 16 && hour < 9);
+  // 매월 15일 00:00 ~ 20일 23:00 (15~19일 종일, 20일은 23시 정각에 마감)
+  return (day >= 15 && day <= 19) || (day === 20 && hour < 23);
 }
 
 function getNextPeriodLabel() {
@@ -11,12 +12,12 @@ function getNextPeriodLabel() {
   const h = now.getHours();
   let y = now.getFullYear();
   let m = now.getMonth(); // 0-indexed
-  if (d > 16 || (d === 16 && h >= 9)) {
+  if (d > 20 || (d === 20 && h >= 23)) {
     m++;
     if (m > 11) { m = 0; y++; }
   }
   const fmt = (date) => date.toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  return `${fmt(new Date(y, m, 15, 9, 0))} ~ ${fmt(new Date(y, m, 16, 9, 0))}`;
+  return `${fmt(new Date(y, m, 15, 0, 0))} ~ ${fmt(new Date(y, m, 20, 23, 0))}`;
 }
 
 async function renderRequestTab(employee, branchId) {
@@ -24,7 +25,7 @@ async function renderRequestTab(employee, branchId) {
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
 
   const now = new Date();
-  // 신청 기간(15일 09시~16일 09시)에는 다음달로 기본 설정
+  // 신청 기간(15일 00시~20일 23시)에는 다음달로 기본 설정
   let year = now.getFullYear();
   let month = now.getMonth() + 1;
   if (isRequestPeriodOpen()) {
@@ -126,7 +127,7 @@ async function renderRequestTab(employee, branchId) {
       <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
         <div style="font-size:28px;margin-bottom:10px;">🔒</div>
         <div style="font-weight:600;margin-bottom:6px;">현재 신청 기간이 아닙니다</div>
-        <div style="font-size:13px;color:var(--gray);">매월 15일 09:00 ~ 16일 09:00</div>
+        <div style="font-size:13px;color:var(--gray);">매월 15일 00:00 ~ 20일 23:00</div>
         <div style="font-size:12px;color:var(--gray);margin-top:6px;">다음 신청 기간: ${getNextPeriodLabel()}</div>
       </div>
       `}

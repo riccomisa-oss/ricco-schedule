@@ -60,12 +60,16 @@
 <script>
   let currentBranchId = BRANCH_IDS.HANAM;
 
+  function unlockAdmin() {
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    initAdmin();
+  }
+
   document.getElementById('login-btn').addEventListener('click', () => {
     const pw = document.getElementById('admin-password').value;
     if (pw === ADMIN_PASSWORD) {
-      document.getElementById('auth-gate').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      initAdmin();
+      unlockAdmin();
     } else {
       document.getElementById('auth-error').textContent = '비밀번호가 틀렸습니다.';
     }
@@ -73,6 +77,16 @@
   document.getElementById('admin-password').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('login-btn').click();
   });
+
+  // 허브 경유 자동 통과: URL ?k= 키가 비번과 일치하면 게이트를 건너뛴다.
+  // 통과 직후 주소창/히스토리에서 키를 지워 공유·뒤로가기로 키가 새는 것을 막는다.
+  (function tryKeyPassthrough() {
+    const k = new URLSearchParams(location.search).get('k');
+    if (k && k === ADMIN_PASSWORD) {
+      history.replaceState(null, '', location.pathname);
+      unlockAdmin();
+    }
+  })();
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {

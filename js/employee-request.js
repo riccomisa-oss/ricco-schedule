@@ -34,18 +34,23 @@ async function renderRequestTab(employee, branchId) {
 
   async function render() {
     const now2 = new Date();
-    const [allEmployees, conditions, myRequests, annualStats] = await Promise.all([
+    const [allEmployees, conditions, myRequests, annualStats, pendingAnnualCount] = await Promise.all([
       getEmployees(branchId),
       getConditions(branchId),
       getEmployeeDayOffRequests(employee.id, year, month),
       getAnnualLeaveStats(branchId, year),
+      getEmployeePendingAnnualCount(employee.id),
     ]);
 
     const allRequests = await getDayOffRequests(branchId, year, month);
     const approvedAll = allRequests.filter(r => ['approved', 'override_approved'].includes(r.status));
 
-    // 연차 잔여일
+    // 연차 잔여일 (전기간 잔여 − 전기간 pending 연차 = 지금 새로 더 쓸 수 있는 양)
     const myStat = annualStats.find(s => s.emp.id === employee.id);
+    const rawRemaining = myStat ? myStat.remaining : 0;
+    const effRemaining = effectiveAnnualRemaining(rawRemaining, pendingAnnualCount);
+    // 이번 달 기제출 비거절(휴무+연차) 건수 — 월 합산 캡의 baseline
+    const monthBaseline = activeRequests(myRequests).length;
 
     const isCurrentMonth = year === now2.getFullYear() && month === now2.getMonth() + 1;
     const isPastMonth = year < now2.getFullYear() || (year === now2.getFullYear() && month < now2.getMonth() + 1);
@@ -68,7 +73,7 @@ async function renderRequestTab(employee, branchId) {
         ${employee.hire_date != null ? `
         <div style="display:flex;gap:8px;margin-bottom:20px;">
           <button id="type-normal" class="btn btn-primary" style="flex:1;padding:10px 0;font-size:14px;font-weight:700;">휴무 요청</button>
-          <button id="type-annual" class="btn btn-ghost" style="flex:1;padding:10px 0;font-size:14px;font-weight:600;">연차 사용</button>
+          <button id="type-annual" class="btn btn-ghost" style="flex:1;padding:10px 0;font-size:14px;font-weight:600;${effRemaining < 1 ? 'opacity:0.4;cursor:not-allowed;' : ''}" ${effRemaining < 1 ? 'disabled title="잔여 연차가 없습니다"' : ''}>연차 사용${effRemaining < 1 ? ' (잔여 0)' : ''}</button>
         </div>
         <input type="hidden" id="req-type" value="normal" />
         ` : `
@@ -80,16 +85,16 @@ async function renderRequestTab(employee, branchId) {
 
         ${myStat ? `
         <div id="annual-info" style="display:none;background:#f1f8e9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
-          연차 잔여 <strong style="color:var(--olive);font-size:15px;">${myStat.remaining}일</strong>
-          <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+          연차 잔여 <strong id="annual-remaining-num" style="color:var(--olive);font-size:15px;">${effRemaining}일</strong>
+          <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용${pendingAnnualCount > 0 ? `, 대기 ${pendingAnnualCount}일` : ''})</span>
+          <span id="annual-picked-hint" style="color:var(--olive);margin-left:6px;font-weight:600;"></span>
         </div>` : ''}
 
         <div id="calendar-section" style="margin-bottom:16px;">
-          <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;display:block;margin-bottom:10px;">날짜 선택</label>
+          <label style="font-size:12px;font-weight:600;color:var(--gray);letter-spacing:0.03em;display:block;margin-bottom:10px;">날짜 선택 <span style="font-weight:500;">— 휴무는 빨강, 연차는 초록</span></label>
           ${(() => {
-            const blocked = new Set(
-              myRequests.filter(r => r.type !== 'annual' && !['rejected','override_rejected'].includes(r.status)).map(r => r.date)
-            );
+            // 비거절 기제출(휴무+연차) → 재선택 불가, 유형별로 색 표시
+            const myActiveByDate = new Map(activeRequests(myRequests).map(r => [r.date, r.type]));
             const othersOff = new Set(approvedAll.map(r => r.date));
             const firstDow = new Date(year, month - 1, 1).getDay();
             const daysInMonth = new Date(year, month, 0).getDate();
@@ -103,11 +108,15 @@ async function renderRequestTab(employee, branchId) {
               const dow = new Date(year, month - 1, d).getDay();
               const isSun = dow === 0, isSat = dow === 6;
               const isHol = isHolidayOrWeekend(year, month, d) && !isSun && !isSat;
-              const isBlocked = blocked.has(ds);
+              const existingType = myActiveByDate.get(ds);
+              const isBlocked = existingType != null;
               const hasOff = othersOff.has(ds);
-              const textColor = isBlocked ? '#ccc' : (isSun || isHol) ? '#c62828' : isSat ? '#1565c0' : 'var(--dark)';
+              const baseColor = (isSun || isHol) ? '#c62828' : isSat ? '#1565c0' : 'var(--dark)';
+              const blockBg = existingType === 'annual' ? 'var(--olive)' : existingType === 'normal' ? 'var(--red)' : 'transparent';
+              const textColor = isBlocked ? '#fff' : baseColor;
               cells += `<button data-date="${ds}" onclick="pickDate('${ds}')" ${isBlocked ? 'disabled' : ''}
-                style="border:none;background:transparent;color:${textColor};border-radius:50%;padding:0;width:100%;aspect-ratio:1;font-size:13px;font-weight:500;cursor:${isBlocked?'not-allowed':'pointer'};${isBlocked?'opacity:0.3;':''}position:relative;">
+                title="${isBlocked ? (existingType === 'annual' ? '신청한 연차' : '신청한 휴무') : ''}"
+                style="border:none;background:${isBlocked ? blockBg : 'transparent'};color:${textColor};border-radius:50%;padding:0;width:100%;aspect-ratio:1;font-size:13px;font-weight:${isBlocked ? '700' : '500'};cursor:${isBlocked?'default':'pointer'};${isBlocked?'opacity:0.85;':''}position:relative;">
                 ${d}${hasOff && !isBlocked ? '<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--red);display:block;"></span>' : ''}
               </button>`;
             }
@@ -116,9 +125,6 @@ async function renderRequestTab(employee, branchId) {
           <input type="hidden" id="req-date" value="" />
           <div id="selected-date-label" style="margin-top:12px;font-size:14px;font-weight:600;color:var(--dark);min-height:20px;text-align:center;"></div>
           <div id="date-off-info" style="font-size:12px;min-height:16px;margin-top:8px;color:var(--gray);text-align:center;"></div>
-        </div>
-        <div id="annual-section" style="display:none;margin-bottom:16px;">
-          <div id="annual-status-display"></div>
         </div>
 
         <button class="btn btn-primary" onclick="submitDayOffRequest()" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
@@ -147,7 +153,7 @@ async function renderRequestTab(employee, branchId) {
                   ? '<span class="badge badge-approved">승인</span>'
                   : '<span class="badge badge-rejected">거절</span>';
               const [, m, d] = r.date.split('-');
-              const dateLabel = r.type === 'annual' ? '연차 1일' : `${Number(m)}월 ${Number(d)}일`;
+              const dateLabel = `${Number(m)}월 ${Number(d)}일`;
               const typeLabel = r.type === 'normal' ? '휴무 요청' : '연차 사용';
               return `
                 <div class="card" style="margin-bottom:10px;padding:14px 16px;">
@@ -173,7 +179,9 @@ async function renderRequestTab(employee, branchId) {
     `;
 
     window.cancelRequest = async (id, type, date) => {
-      if (!confirm('휴무 신청을 취소하시겠습니까?')) return;
+      const [, cm, cd] = date.split('-');
+      const what = type === 'annual' ? '연차' : '휴무';
+      if (!confirm(`${Number(cm)}월 ${Number(cd)}일 ${what} 신청을 취소할까요?`)) return;
       try {
         await deleteDayOffRequest(id);
         if (type === 'annual') {
@@ -186,121 +194,108 @@ async function renderRequestTab(employee, branchId) {
     };
 
     if (isRequestPeriodOpen()) {
-      const selectedDates = new Set();
-
-      window.pickDate = (dateStr) => {
-        if (selectedDates.has(dateStr)) {
-          selectedDates.delete(dateStr);
-          const btn = document.querySelector(`[data-date="${dateStr}"]`);
-          if (btn) {
-            btn.style.background = 'transparent';
-            btn.style.color = btn._origColor || '';
-            btn.style.fontWeight = '500';
-          }
-        } else {
-          if (selectedDates.size >= 3) {
-            const lbl = document.getElementById('selected-date-label');
-            if (lbl) lbl.textContent = '최대 3일까지 선택 가능합니다.';
-            return;
-          }
-          selectedDates.add(dateStr);
-          const btn = document.querySelector(`[data-date="${dateStr}"]`);
-          if (btn) {
-            if (!btn._origColor) btn._origColor = btn.style.color;
-            btn.style.background = 'var(--red)';
-            btn.style.color = '#fff';
-            btn.style.fontWeight = '700';
-          }
-        }
-
-        document.getElementById('req-date').value = [...selectedDates].sort().join(',');
-
-        const lbl = document.getElementById('selected-date-label');
-        if (lbl) {
-          if (selectedDates.size === 0) {
-            lbl.textContent = '';
-          } else {
-            const labels = [...selectedDates].sort().map(ds => {
-              const [, m, d] = ds.split('-');
-              const dow = ['일','월','화','수','목','금','토'][new Date(ds).getDay()];
-              return `${Number(m)}월 ${Number(d)}일 (${dow})`;
-            });
-            lbl.textContent = labels.join(' · ') + `  (${selectedDates.size}/3)`;
-          }
-        }
-
-        const infoEl = document.getElementById('date-off-info');
-        if (!infoEl) return;
-        const allOffNames = new Set();
-        selectedDates.forEach(ds => {
-          approvedAll
-            .filter(r => r.date === ds && r.employee_id !== employee.id)
-            .forEach(r => allOffNames.add(r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?'));
-        });
-        infoEl.textContent = allOffNames.size ? `선택한 날 이미 휴무: ${[...allOffNames].join(', ')}` : '';
-      };
-
-      // 토글 버튼 (연차 직원만)
+      // 날짜 → 유형('normal'|'annual') 매핑. 휴무·연차를 한 캘린더에서 함께 고른다.
+      const selected = new Map();
       const btnNormal = document.getElementById('type-normal');
       const btnAnnual = document.getElementById('type-annual');
       const reqTypeEl = document.getElementById('req-type');
       const annualInfo = document.getElementById('annual-info');
+      const TYPE_BG = { normal: 'var(--red)', annual: 'var(--olive)' };
+
+      const currentMode = () => (reqTypeEl ? reqTypeEl.value : 'normal');
+      const selectedList = () => [...selected.entries()].map(([date, type]) => ({ date, type }));
+
+      function paintCell(ds) {
+        const btn = document.querySelector(`[data-date="${ds}"]`);
+        if (!btn || btn.disabled) return;
+        const t = selected.get(ds);
+        if (t) {
+          if (!btn._origColor) btn._origColor = btn.style.color;
+          btn.style.background = TYPE_BG[t];
+          btn.style.color = '#fff';
+          btn.style.fontWeight = '700';
+        } else {
+          btn.style.background = 'transparent';
+          btn.style.color = btn._origColor || '';
+          btn.style.fontWeight = '500';
+        }
+      }
+
+      function refreshSelectionUI() {
+        // submit가 읽을 직렬화: "날짜:유형,날짜:유형"
+        const entries = [...selected.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+        const reqDate = document.getElementById('req-date');
+        if (reqDate) reqDate.value = entries.map(([d, t]) => `${d}:${t}`).join(',');
+
+        const counts = selectionCounts(entries.map(([date, type]) => ({ date, type })));
+        const lbl = document.getElementById('selected-date-label');
+        if (lbl) {
+          if (entries.length === 0) {
+            lbl.textContent = '';
+          } else {
+            const parts = entries.map(([ds, t]) => {
+              const [, m, d] = ds.split('-');
+              const dow = ['일','월','화','수','목','금','토'][new Date(ds).getDay()];
+              return `${t === 'annual' ? '🌿' : ''}${Number(m)}월 ${Number(d)}일(${dow})`;
+            });
+            lbl.innerHTML = parts.join(' · ') +
+              `<br><span style="font-size:12px;color:var(--gray);font-weight:500;">합계 ${monthBaseline + entries.length}/${MAX_MONTHLY_OFFS}일${counts.annual ? ` · 연차 ${counts.annual}일` : ''}</span>`;
+          }
+        }
+        const hint = document.getElementById('annual-picked-hint');
+        if (hint) hint.textContent = counts.annual ? `→ 신청 후 잔여 ${Math.max(0, effRemaining - counts.annual)}일` : '';
+
+        const infoEl = document.getElementById('date-off-info');
+        if (infoEl) {
+          const names = new Set();
+          selected.forEach((_t, ds) => {
+            approvedAll
+              .filter(r => r.date === ds && r.employee_id !== employee.id)
+              .forEach(r => names.add(r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?'));
+          });
+          infoEl.textContent = names.size ? `선택한 날 이미 휴무: ${[...names].join(', ')}` : '';
+        }
+      }
+
+      window.pickDate = (ds) => {
+        const mode = currentMode();
+        const resultEl = document.getElementById('request-result');
+        const prev = selected.get(ds); // undefined | 'normal' | 'annual'
+
+        if (prev === mode) {
+          selected.delete(ds);            // 같은 모드 재클릭 → 해제
+          paintCell(ds); refreshSelectionUI();
+          if (resultEl) resultEl.innerHTML = '';
+          return;
+        }
+
+        if (prev) selected.delete(ds);    // 다른 모드로 전환 — 후보 상태에서 캡 검증
+        const check = canAddSelection({ mode, baseline: monthBaseline, selected: selectedList(), effRemaining });
+        if (!check.ok) {
+          if (prev) selected.set(ds, prev); // 전환 실패 → 원상복구
+          paintCell(ds); refreshSelectionUI();
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">${check.reason}</div>`;
+          return;
+        }
+        selected.set(ds, mode);
+        paintCell(ds); refreshSelectionUI();
+        if (resultEl) resultEl.innerHTML = '';
+      };
 
       function setType(type) {
-        reqTypeEl.value = type;
+        if (reqTypeEl) reqTypeEl.value = type;
         if (btnNormal && btnAnnual) {
           const isAnnual = type === 'annual';
           btnNormal.className = isAnnual ? 'btn btn-ghost' : 'btn btn-primary';
           btnNormal.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
           btnAnnual.className = isAnnual ? 'btn btn-primary' : 'btn btn-ghost';
-          btnAnnual.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
+          btnAnnual.style.cssText = `flex:1;padding:10px 0;font-size:14px;font-weight:700;${effRemaining < 1 ? 'opacity:0.4;cursor:not-allowed;' : ''}`;
         }
         if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
-
-        const calSection = document.getElementById('calendar-section');
-        const annSection = document.getElementById('annual-section');
-        const annDisplay = document.getElementById('annual-status-display');
-        const reqDate = document.getElementById('req-date');
-
-        if (type === 'annual') {
-          if (calSection) calSection.style.display = 'none';
-          if (annSection) annSection.style.display = 'block';
-          // 캘린더 선택 초기화
-          selectedDates.clear();
-          document.querySelectorAll('[data-date]').forEach(btn => {
-            if (btn.disabled) return;
-            btn.style.background = 'transparent';
-            btn.style.color = btn._origColor || '';
-            btn.style.fontWeight = '500';
-          });
-          // 이미 연차 신청 여부 확인
-          const existingAnnual = myRequests.find(r => r.type === 'annual' && !['rejected', 'override_rejected'].includes(r.status));
-          if (existingAnnual) {
-            const statusText = existingAnnual.status === 'pending' ? '대기 중' : '승인됨';
-            if (annDisplay) annDisplay.innerHTML = `
-              <div style="background:#f1f8e9;border-radius:8px;padding:20px;text-align:center;">
-                <div style="font-size:15px;font-weight:600;color:var(--olive);">✅ 연차 1일 신청 완료</div>
-                <div style="font-size:13px;color:var(--gray);margin-top:6px;">${statusText}</div>
-              </div>`;
-            if (reqDate) reqDate.value = '';
-          } else {
-            if (reqDate) reqDate.value = `${year}-${String(month).padStart(2,'0')}-01`;
-            if (annDisplay) annDisplay.innerHTML = `
-              <div style="background:#f1f8e9;border-radius:8px;padding:24px;text-align:center;">
-                <div style="font-size:28px;margin-bottom:10px;">🌿</div>
-                <div style="font-size:15px;font-weight:700;">${year}년 ${month}월 연차 1일 사용</div>
-                <div style="font-size:12px;color:var(--gray);margin-top:6px;">신청 후 관리자 승인이 필요합니다</div>
-              </div>`;
-          }
-        } else {
-          if (calSection) calSection.style.display = 'block';
-          if (annSection) annSection.style.display = 'none';
-          if (reqDate) reqDate.value = [...selectedDates].sort().join(',');
-        }
       }
 
       if (btnNormal) btnNormal.addEventListener('click', () => setType('normal'));
-      if (btnAnnual) btnAnnual.addEventListener('click', () => setType('annual'));
+      if (btnAnnual && !btnAnnual.disabled) btnAnnual.addEventListener('click', () => setType('annual'));
     }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
@@ -316,60 +311,50 @@ async function renderRequestTab(employee, branchId) {
     window.submitDayOffRequest = async () => {
       const resultEl = document.getElementById('request-result');
       try {
-        const type = document.getElementById('req-type').value;
+        const raw = (document.getElementById('req-date').value || '').trim();
+        const picks = raw
+          ? raw.split(',').filter(Boolean).map(p => {
+              const [date, type] = p.split(':');
+              return { date, type: type === 'annual' ? 'annual' : 'normal' };
+            })
+          : [];
 
-        if (type === 'annual') {
-          const existingAnnual = myRequests.find(r => r.type === 'annual' && !['rejected', 'override_rejected'].includes(r.status));
-          if (existingAnnual) {
-            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 이미 이번 달 연차를 신청하셨습니다.</div>`;
-            return;
-          }
-          const myStat = annualStats.find(s => s.emp.id === employee.id);
-          const remaining = myStat ? myStat.remaining : 0;
-          if (remaining < 1) {
-            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 잔여 연차가 없습니다. (현재 ${remaining}일)</div>`;
-            return;
-          }
-          await createDayOffRequest({
-            employeeId: employee.id,
-            date: `${year}-${String(month).padStart(2,'0')}-01`,
-            type: 'annual',
-            status: 'pending',
-            rejectionReason: null,
-          });
-          if (resultEl) resultEl.innerHTML = '<div class="alert alert-success">✅ 연차 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>';
-          render();
+        // 월 합산 3일 + 잔여 연차 최종 검증 (R1/R2)
+        const check = validateSubmission({ baseline: monthBaseline, selected: picks, effRemaining });
+        if (!check.ok) {
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ ${check.reason}</div>`;
           return;
         }
 
-        // 휴무 요청: 날짜 기반
-        const dateVal = document.getElementById('req-date').value;
-        if (!dateVal) {
-          if (resultEl) resultEl.innerHTML = '<div class="alert alert-error">날짜를 선택해주세요.</div>';
+        // 같은 날 중복(이미 신청한 비거절 날짜) 재검증 (R3)
+        const blockedDates = new Set(activeRequests(myRequests).map(r => r.date));
+        const dup = picks.find(p => blockedDates.has(p.date));
+        if (dup) {
+          const [, m, d] = dup.date.split('-');
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ ${Number(m)}월 ${Number(d)}일은 이미 신청한 날짜예요.</div>`;
           return;
         }
-        const dates = dateVal.split(',').filter(Boolean);
-        for (const date of dates) {
-          const alreadyExists = myRequests.find(r =>
-            r.date === date && r.type !== 'annual' && !['rejected', 'override_rejected'].includes(r.status)
-          );
-          if (alreadyExists) {
-            const [, m, d] = date.split('-');
-            if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ ${Number(m)}월 ${Number(d)}일에 이미 신청 내역이 있습니다.</div>`;
-            return;
-          }
-        }
-        await Promise.all(dates.map(date => createDayOffRequest({
+
+        const results = await Promise.allSettled(picks.map(p => createDayOffRequest({
           employeeId: employee.id,
-          date,
-          type: 'normal',
+          date: p.date,
+          type: p.type,
           status: 'pending',
           rejectionReason: null,
         })));
-        if (resultEl) resultEl.innerHTML = `<div class="alert alert-success">✅ ${dates.length}일 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>`;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const okN = results.length - failed;
+        if (failed > 0) {
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">⚠️ ${okN}일 신청됨, ${failed}일 실패. 잠시 후 다시 시도해주세요.</div>`;
+        } else {
+          const annualN = picks.filter(p => p.type === 'annual').length;
+          const normalN = picks.length - annualN;
+          const summary = [normalN ? `휴무 ${normalN}일` : '', annualN ? `연차 ${annualN}일` : ''].filter(Boolean).join(' · ');
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-success">✅ ${summary} 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>`;
+        }
         render();
       } catch (err) {
-        if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 오류가 발생했습니다: ${err?.message || err}</div>`;
+        if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ 오류가 발생했어요: ${err?.message || err}</div>`;
       }
     };
   }

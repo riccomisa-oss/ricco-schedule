@@ -1,5 +1,12 @@
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// 월말 날짜 문자열(로컬 기준). new Date(y,m,0).toISOString()은 KST에서 전날로 밀려
+// 말일을 누락하므로 날짜 범위 쿼리에는 이 헬퍼를 쓴다.
+function monthEndDateStr(year, month) {
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
 // ── Branches ──────────────────────────────────────────────
 async function getBranches() {
   const { data, error } = await db.from('branches').select('*').order('name');
@@ -108,7 +115,7 @@ async function updateCondition(id, fields) {
 // ── Day Off Requests ──────────────────────────────────────
 async function getDayOffRequests(branchId, year, month) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+  const endDate = monthEndDateStr(year, month);
   const { data, error } = await db
     .from('day_off_requests')
     .select('*, employees(name, role, branch_id)')
@@ -121,7 +128,7 @@ async function getDayOffRequests(branchId, year, month) {
 
 async function getEmployeeDayOffRequests(employeeId, year, month) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+  const endDate = monthEndDateStr(year, month);
   const { data, error } = await db
     .from('day_off_requests')
     .select('*')
@@ -131,6 +138,18 @@ async function getEmployeeDayOffRequests(employeeId, year, month) {
     .order('requested_at');
   if (error) throw error;
   return data;
+}
+
+// 직원의 전 기간 pending 연차 수 — ledger에 아직 안 잡힌 연차(잔여에서 차감)
+async function getEmployeePendingAnnualCount(employeeId) {
+  const { data, error } = await db
+    .from('day_off_requests')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .eq('type', 'annual')
+    .eq('status', 'pending');
+  if (error) throw error;
+  return (data || []).length;
 }
 
 async function createDayOffRequest({ employeeId, date, type, status, rejectionReason }) {

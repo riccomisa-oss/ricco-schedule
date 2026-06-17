@@ -311,7 +311,7 @@ async function renderScheduleTab(branchId) {
             <label>날짜</label>
             <input type="date" id="al-date"
               min="${year}-${String(month).padStart(2,'0')}-01"
-              max="${new Date(year, month, 0).toISOString().split('T')[0]}" />
+              max="${year}-${String(month).padStart(2,'0')}-${String(new Date(year, month, 0).getDate()).padStart(2,'0')}" />
           </div>
           <div class="modal-actions">
             <button class="btn btn-ghost" id="al-cancel-btn">취소</button>
@@ -381,8 +381,8 @@ async function renderScheduleTab(branchId) {
         if (!date) return alert('날짜를 선택하세요.');
 
         const already = requests.find(r => r.employee_id === empId && r.date === date
-          && ['approved','override_approved'].includes(r.status));
-        if (already) return alert('해당 날짜에 이미 승인된 휴무가 있습니다.');
+          && ['pending','approved','override_approved'].includes(r.status));
+        if (already) return alert('해당 날짜에 이미 신청/승인된 휴무·연차가 있습니다.');
 
         const stat = alStatsMap.get(empId);
         if (stat && stat.remaining <= 0) {
@@ -391,6 +391,10 @@ async function renderScheduleTab(branchId) {
 
         try {
           await createDayOffRequest({ employeeId: empId, date, type: 'annual', status: 'override_approved' });
+          const ledger = await getAnnualLedger(empId);
+          if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
+            await addLedgerEntry({ employeeId: empId, date, type: 'usage', days: 1, note: '연차 사용(관리자 입력)' });
+          }
           document.getElementById('al-modal').classList.remove('open');
           render();
         } catch (err) {

@@ -2,13 +2,13 @@ function buildOffCalendar(year, month, requests, employees) {
   const firstDow = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
   const approved = requests.filter(r =>
-    r.type === 'normal' && ['approved', 'override_approved'].includes(r.status)
+    ['approved', 'override_approved'].includes(r.status)
   );
   const offMap = new Map();
   approved.forEach(r => {
     if (!offMap.has(r.date)) offMap.set(r.date, []);
     const emp = r.employees || employees.find(e => e.id === r.employee_id);
-    offMap.get(r.date).push(emp?.name || '?');
+    offMap.get(r.date).push({ name: emp?.name || '?', annual: r.type === 'annual' });
   });
 
   const dowHdr = ['일','월','화','수','목','금','토'].map((d, i) =>
@@ -26,7 +26,7 @@ function buildOffCalendar(year, month, requests, employees) {
     const crowded = names.length >= 2;
     cells.push(`<td style="border:1px solid var(--light);vertical-align:top;padding:4px;height:52px;${crowded?'background:#fff3e0;':''}">
       <div style="font-size:11px;font-weight:600;color:${dateColor};">${d}</div>
-      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n}</div>`).join('')}
+      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.annual ? '🌿' : ''}${n.name}</div>`).join('')}
     </td>`);
   }
   while (cells.length < totalCells) cells.push('<td style="border:1px solid var(--light);"></td>');
@@ -128,8 +128,8 @@ async function renderRequestsTab(branchId) {
                           <button class="btn btn-sm btn-primary" onclick="doApprove('${r.id}','${r.type}','${r.employee_id}','${r.date}')">승인</button>
                           <button class="btn btn-sm btn-ghost" style="color:var(--red);" onclick="doReject('${r.id}')">거절</button>
                         ` : ''}
-                        ${canOverrideApprove ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="doOverride('${r.id}','override_approved')">승인으로</button>` : ''}
-                        ${canOverrideReject  ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);"   onclick="doOverride('${r.id}','override_rejected')">취소</button>` : ''}
+                        ${canOverrideApprove ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="doOverride('${r.id}','override_approved','${r.type}','${r.employee_id}','${r.date}')">승인으로</button>` : ''}
+                        ${canOverrideReject  ? `<button class="btn btn-ghost btn-sm" style="color:var(--red);"   onclick="doOverride('${r.id}','override_rejected','${r.type}','${r.employee_id}','${r.date}')">취소</button>` : ''}
                         <button class="btn btn-ghost btn-sm" style="color:var(--gray);" onclick="doDelete('${r.id}','${r.type}','${r.employee_id}','${r.date}')">🗑</button>
                       </td>
                     </tr>`;
@@ -180,9 +180,20 @@ async function renderRequestsTab(branchId) {
           if (!confirm(`⚠️ ${Number(m)}월 ${Number(d)}일에 이미 ${alreadyApproved.length}명(${names}) 휴무 승인됨.\n계속 승인하시겠습니까?`)) return;
         }
       }
+      if (type === 'annual') {
+        const stats = await getAnnualLeaveStats(branchId, year);
+        const st = stats.find(s => s.emp.id === employeeId);
+        if (st && st.remaining < 1) {
+          const [, m, d] = date.split('-');
+          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차를 승인하면 잔여가 마이너스가 됩니다. 계속할까요?`)) return;
+        }
+      }
       await resolveDayOffRequest(id, 'approved');
       if (type === 'annual') {
-        await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+        const ledger = await getAnnualLedger(employeeId);
+        if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
+          await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+        }
       }
       render();
     };
@@ -194,8 +205,18 @@ async function renderRequestsTab(branchId) {
       render();
     };
 
-    window.doOverride = async (id, newStatus) => {
+    window.doOverride = async (id, newStatus, type, employeeId, date) => {
       await overrideDayOffRequest(id, newStatus);
+      if (type === 'annual') {
+        if (newStatus === 'override_rejected') {
+          await deleteLedgerUsageByDate(employeeId, date);
+        } else if (newStatus === 'override_approved') {
+          const ledger = await getAnnualLedger(employeeId);
+          if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
+            await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+          }
+        }
+      }
       render();
     };
 

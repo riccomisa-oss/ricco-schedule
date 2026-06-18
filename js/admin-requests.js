@@ -8,7 +8,7 @@ function buildOffCalendar(year, month, requests, employees) {
   approved.forEach(r => {
     if (!offMap.has(r.date)) offMap.set(r.date, []);
     const emp = r.employees || employees.find(e => e.id === r.employee_id);
-    offMap.get(r.date).push({ name: emp?.name || '?', annual: r.type === 'annual' });
+    offMap.get(r.date).push({ name: emp?.name || '?', annual: r.type === 'annual', half: r.type === 'annual' && Number(r.days) === 0.5 });
   });
 
   const dowHdr = ['일','월','화','수','목','금','토'].map((d, i) =>
@@ -26,7 +26,7 @@ function buildOffCalendar(year, month, requests, employees) {
     const crowded = names.length >= 2;
     cells.push(`<td style="border:1px solid var(--light);vertical-align:top;padding:4px;height:52px;${crowded?'background:#fff3e0;':''}">
       <div style="font-size:11px;font-weight:600;color:${dateColor};">${d}</div>
-      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.annual ? '🌿' : ''}${esc(n.name)}</div>`).join('')}
+      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.annual ? (n.half ? '🌿½' : '🌿') : ''}${esc(n.name)}</div>`).join('')}
     </td>`);
   }
   while (cells.length < totalCells) cells.push('<td style="border:1px solid var(--light);"></td>');

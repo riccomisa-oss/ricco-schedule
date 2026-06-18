@@ -23,7 +23,9 @@ async function renderAnnualLeaveTab(branchId) {
         r.date.startsWith(`${currentYear}-${ms}`)
       ).length;
     });
-    const annualCount = yearRequests.filter(r => r.employee_id === emp.id && r.type === 'annual').length;
+    const annualCount = yearRequests
+      .filter(r => r.employee_id === emp.id && r.type === 'annual')
+      .reduce((s, r) => s + (Number(r.days) || 1), 0); // 반차는 0.5로 합산
     return { emp, normalCounts, annualCount, total: normalCounts.reduce((a,b)=>a+b,0) + annualCount };
   });
   let currentEmpId = null;

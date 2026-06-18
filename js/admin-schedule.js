@@ -165,7 +165,7 @@ async function renderScheduleTab(branchId) {
           return `<tr style="${borderTop ? 'border-top:2px solid var(--olive);' : ''}border-bottom:1px solid var(--light);">
             <td style="white-space:nowrap;padding:6px 10px;border-right:2px solid var(--light);background:var(--white);position:sticky;left:0;z-index:1;">
               <div style="font-size:10px;color:var(--gray);">${isHall ? '홀' : '주방'}</div>
-              <div style="font-size:13px;font-weight:600;">${emp.name}</div>
+              <div style="font-size:13px;font-weight:600;">${esc(emp.name)}</div>
               ${wkOffLabel}
             </td>
             ${cells}
@@ -213,14 +213,14 @@ async function renderScheduleTab(branchId) {
         const isHall = emp.role.startsWith('hall');
 
         if (isOff) {
-          cellHtml += `<div class="shift-chip off" style="font-size:10px;">${emp.name} 휴</div>`;
+          cellHtml += `<div class="shift-chip off" style="font-size:10px;">${esc(emp.name)} 휴</div>`;
           return;
         }
         if (isHall) {
           cellHtml += `
             <select class="shift-select" data-emp="${emp.id}" data-date="${date}"
               style="font-size:10px;width:100%;margin:1px 0;border:1px solid var(--light);border-radius:3px;padding:1px;">
-              <option value="">— ${emp.name}</option>
+              <option value="">— ${esc(emp.name)}</option>
               <option value="hall_fixed" ${currentShift==='hall_fixed'?'selected':''}>홀 고정</option>
               <option value="off" ${currentShift==='off'?'selected':''}>휴무</option>
             </select>`;
@@ -229,7 +229,7 @@ async function renderScheduleTab(branchId) {
           cellHtml += `
             <select class="shift-select" data-emp="${emp.id}" data-date="${date}"
               style="font-size:10px;width:100%;margin:1px 0;border:1px solid var(--light);border-radius:3px;padding:1px;${currentShift==='open'?'background:#e8f5e9;':''}">
-              <option value="">— ${emp.name}${openMark}</option>
+              <option value="">— ${esc(emp.name)}${openMark}</option>
               <option value="open"  ${currentShift==='open' ?'selected':''}>오픈</option>
               <option value="close" ${currentShift==='close'?'selected':''}>마감</option>
               <option value="off"   ${currentShift==='off'  ?'selected':''}>휴무</option>
@@ -252,10 +252,10 @@ async function renderScheduleTab(branchId) {
         const entry = adjEntryMap.get(`${emp.id}_${dateStr}`);
         const shift = entry?.shift_type;
         if (isOff || shift === 'off') {
-          html += `<div class="shift-chip off" style="font-size:10px;">${emp.name} 휴</div>`;
+          html += `<div class="shift-chip off" style="font-size:10px;">${esc(emp.name)} 휴</div>`;
         } else if (shift) {
           const s = SHIFT_COLORS[shift] || {};
-          html += `<div style="font-size:10px;background:${s.bg};color:${s.color};border-radius:3px;padding:1px 3px;margin:1px 0;">${emp.name} ${s.label}</div>`;
+          html += `<div style="font-size:10px;background:${s.bg};color:${s.color};border-radius:3px;padding:1px 3px;margin:1px 0;">${esc(emp.name)} ${s.label}</div>`;
         }
       });
       html += '</td>';
@@ -300,7 +300,7 @@ async function renderScheduleTab(branchId) {
           <div class="form-group">
             <label>직원</label>
             <select id="al-employee">
-              ${allEmps.filter(e => e.annual_leave_total != null).map(e => `<option value="${e.id}">${e.name} (${e.role.startsWith('kitchen') ? '주방' : '홀'})</option>`).join('')}
+              ${allEmps.filter(e => e.annual_leave_total != null).map(e => `<option value="${e.id}">${esc(e.name)} (${e.role.startsWith('kitchen') ? '주방' : '홀'})</option>`).join('')}
             </select>
             ${allEmps.filter(e => e.annual_leave_total != null).length === 0
               ? '<p style="color:var(--gray);font-size:12px;margin-top:4px;">연차 설정된 직원이 없습니다.</p>'
@@ -452,7 +452,7 @@ async function renderScheduleTab(branchId) {
             <tbody>
               ${rows.map(({ emp, workDays, offDays }) => `
                 <tr>
-                  <td>${emp.name}</td>
+                  <td>${esc(emp.name)}</td>
                   <td style="font-size:12px;color:var(--gray);">${emp.role.startsWith('kitchen') ? '주방' : '홀'} ${emp.employment_type === 'fulltime' ? '정직원' : '파트'}</td>
                   <td style="text-align:center;font-weight:700;">${workDays}일</td>
                   <td style="text-align:center;color:var(--gray);">${offDays}일</td>
@@ -478,7 +478,7 @@ async function renderScheduleTab(branchId) {
             <tbody>
               ${stats.map(({ emp, total, used, remaining }) => `
                 <tr>
-                  <td>${emp.name}</td>
+                  <td>${esc(emp.name)}</td>
                   <td style="font-size:12px;color:var(--gray);">${ROLE_LABELS[emp.role]}</td>
                   <td style="text-align:center;">${total}일</td>
                   <td style="text-align:center;">${used}일</td>

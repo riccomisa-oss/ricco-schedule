@@ -75,15 +75,15 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           todaySection = `
             <div class="card" style="margin-bottom:16px;background:#FFF9F9;border-left:3px solid var(--red);padding:14px 16px;">
               <div style="font-weight:600;margin-bottom:6px;">오늘 — 휴무 🌿</div>
-              ${kitchen.length ? `<div style="font-size:13px;color:var(--gray);">주방: ${kitchen.join(', ')}</div>` : ''}
-              ${hall.length    ? `<div style="font-size:13px;color:var(--gray);">홀: ${hall.join(', ')}</div>` : ''}
+              ${kitchen.length ? `<div style="font-size:13px;color:var(--gray);">주방: ${kitchen.map(esc).join(', ')}</div>` : ''}
+              ${hall.length    ? `<div style="font-size:13px;color:var(--gray);">홀: ${hall.map(esc).join(', ')}</div>` : ''}
             </div>`;
         } else if (todayWorkers.length > 0) {
           todaySection = `
             <div class="card" style="margin-bottom:16px;background:#F1F8E9;border-left:3px solid var(--olive);padding:14px 16px;">
               <div style="font-weight:600;margin-bottom:6px;">오늘 출근 인원</div>
-              ${kitchen.length ? `<div style="font-size:13px;">주방: ${kitchen.join(', ')}</div>` : ''}
-              ${hall.length    ? `<div style="font-size:13px;">홀: ${hall.join(', ')}</div>` : ''}
+              ${kitchen.length ? `<div style="font-size:13px;">주방: ${kitchen.map(esc).join(', ')}</div>` : ''}
+              ${hall.length    ? `<div style="font-size:13px;">홀: ${hall.map(esc).join(', ')}</div>` : ''}
             </div>`;
         }
       }
@@ -105,7 +105,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           </div>`;
           const others = workers.filter(w => w.name !== employee.name);
           if (others.length > 0) {
-            html += `<div style="font-size:11px;color:var(--gray);line-height:1.7;">${others.map(w => w.name).join(' · ')}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);line-height:1.7;">${others.map(w => esc(w.name)).join(' · ')}</div>`;
           }
         } else if (myEntry.shift_type === 'hall_fixed') {
           html += `<div style="margin:2px 0 3px;padding:3px 0;background:#f3e5f5;border-radius:4px;text-align:center;">
@@ -113,13 +113,13 @@ async function renderEmployeeScheduleTab(employee, branchId) {
           </div>`;
           const opener = workers.find(w => w.shift === 'open');
           if (opener) {
-            html += `<div style="font-size:11px;color:var(--gray);">오픈 ${opener.name}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);">오픈 ${esc(opener.name)}</div>`;
           }
         } else {
           // close: 마감 표기 없이 오프너 이름만
           const opener = workers.find(w => w.shift === 'open');
           if (opener) {
-            html += `<div style="font-size:11px;color:var(--gray);margin-top:2px;">오픈 ${opener.name}</div>`;
+            html += `<div style="font-size:11px;color:var(--gray);margin-top:2px;">오픈 ${esc(opener.name)}</div>`;
           }
         }
         return html;

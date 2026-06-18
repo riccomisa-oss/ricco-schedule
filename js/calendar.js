@@ -1,3 +1,15 @@
+// HTML 텍스트 이스케이프 — innerHTML에 들어가는 사용자/DB 문자열은 반드시 esc() 통과.
+// (RLS allow-all + anon 키 공개이므로 직원 이름 등에 스크립트가 심길 수 있어 저장형 XSS 방어)
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── 한국 공휴일 (토·일 외 공휴일/대체공휴일 포함) ──────────
 const KOREAN_HOLIDAYS = {
   2025: new Set([

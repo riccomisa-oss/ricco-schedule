@@ -26,7 +26,7 @@ function buildOffCalendar(year, month, requests, employees) {
     const crowded = names.length >= 2;
     cells.push(`<td style="border:1px solid var(--light);vertical-align:top;padding:4px;height:52px;${crowded?'background:#fff3e0;':''}">
       <div style="font-size:11px;font-weight:600;color:${dateColor};">${d}</div>
-      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.annual ? '🌿' : ''}${n.name}</div>`).join('')}
+      ${names.map(n => `<div style="font-size:10px;background:${crowded?'#ffcc80':'var(--light)'};border-radius:3px;padding:1px 3px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${n.annual ? '🌿' : ''}${esc(n.name)}</div>`).join('')}
     </td>`);
   }
   while (cells.length < totalCells) cells.push('<td style="border:1px solid var(--light);"></td>');
@@ -89,7 +89,7 @@ async function renderRequestsTab(branchId) {
 
       ${warnings.length ? `
         <div class="alert alert-info" style="margin-bottom:16px;">
-          ⚠️ 연속 근무 경고: ${warnings.map(w => `<strong>${w.name}</strong> (${w.dates})`).join(', ')}
+          ⚠️ 연속 근무 경고: ${warnings.map(w => `<strong>${esc(w.name)}</strong> (${w.dates})`).join(', ')}
         </div>` : ''}
 
       ${requests.some(r => r.type === 'annual') ? `
@@ -117,12 +117,12 @@ async function renderRequestsTab(branchId) {
                   const canOverrideReject  = r.status === 'approved' || r.status === 'override_approved';
                   return `
                     <tr${isPending ? ' style="background:#fffbf0;"' : ''}>
-                      <td>${emp?.name || '-'}</td>
+                      <td>${esc(emp?.name || '-')}</td>
                       <td>${r.date}</td>
                       <td>${r.type === 'normal' ? '휴무 요청' : '연차 사용'}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
                       <td><span class="badge ${badgeMap[r.status] || ''}" style="${badgeStyle}">${labelMap[r.status] || r.status}</span></td>
-                      <td style="font-size:12px;color:var(--gray);">${r.rejection_reason || '-'}</td>
+                      <td style="font-size:12px;color:var(--gray);">${esc(r.rejection_reason || '-')}</td>
                       <td style="white-space:nowrap;">
                         ${isPending ? `
                           <button class="btn btn-sm btn-primary" onclick="doApprove('${r.id}','${r.type}','${r.employee_id}','${r.date}')">승인</button>
@@ -206,6 +206,15 @@ async function renderRequestsTab(branchId) {
     };
 
     window.doOverride = async (id, newStatus, type, employeeId, date) => {
+      // 거절 연차를 '승인으로' 되돌릴 때도 잔여 음수 경고 (doApprove와 동일 가드)
+      if (type === 'annual' && newStatus === 'override_approved') {
+        const stats = await getAnnualLeaveStats(branchId, year);
+        const st = stats.find(s => s.emp.id === employeeId);
+        if (st && st.remaining < 1) {
+          const [, m, d] = date.split('-');
+          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차를 승인하면 마이너스가 됩니다. 계속할까요?`)) return;
+        }
+      }
       await overrideDayOffRequest(id, newStatus);
       if (type === 'annual') {
         if (newStatus === 'override_rejected') {
@@ -247,6 +256,7 @@ function getConsecutiveWarnings(employees, requests, year, month, conditions, sc
     let streak = 0;
     let maxStreak = 0;
     let streakStart = null;
+    let longestStart = null;
     let longestEnd = null;
 
     for (let d = 1; d <= daysInMonth; d++) {
@@ -254,7 +264,7 @@ function getConsecutiveWarnings(employees, requests, year, month, conditions, sc
       if (!offDates.has(date)) {
         if (streak === 0) streakStart = date;
         streak++;
-        if (streak > maxStreak) { maxStreak = streak; longestEnd = date; }
+        if (streak > maxStreak) { maxStreak = streak; longestStart = streakStart; longestEnd = date; }
       } else {
         streak = 0;
         streakStart = null;
@@ -262,7 +272,7 @@ function getConsecutiveWarnings(employees, requests, year, month, conditions, sc
     }
 
     if (maxStreak > maxConsecutive) {
-      warnings.push({ name: emp.name, dates: `${streakStart}~${longestEnd}` });
+      warnings.push({ name: emp.name, dates: `${longestStart}~${longestEnd}` });
     }
   });
 

@@ -291,13 +291,12 @@ async function getYearDayOffRequests(branchId, year) {
 }
 
 async function deleteLedgerUsageByDate(employeeId, date) {
-  const { data, error } = await db
+  // 해당 (직원,날짜)의 usage를 전부 삭제 (limit(1)이면 중복 시 1건 잔존해 잔여 손실)
+  const { error } = await db
     .from('annual_leave_ledger')
-    .select('id')
+    .delete()
     .eq('employee_id', employeeId)
     .eq('date', date)
-    .eq('type', 'usage')
-    .limit(1);
+    .eq('type', 'usage');
   if (error) throw error;
-  if (data && data.length > 0) await deleteLedgerEntry(data[0].id);
 }

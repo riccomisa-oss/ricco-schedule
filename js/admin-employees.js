@@ -17,7 +17,7 @@ async function renderEmployeesTab(branchId) {
         <tbody>
           ${employees.map(e => `
             <tr>
-              <td>${e.name}</td>
+              <td>${esc(e.name)}</td>
               <td>${ROLE_LABELS[e.role]}</td>
               <td>${e.employment_type === 'fulltime' ? '정직원' : '파트타임'}</td>
               <td>
@@ -40,8 +40,8 @@ async function renderEmployeesTab(branchId) {
                   : '<span style="color:var(--gray);font-size:12px;">—</span>'}
               </td>
               <td>
-                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}','${e.name}','${e.role}',${e.open_capable},${e.annual_leave_total ?? 'null'},'${e.hire_date || ''}')">수정</button>
-                <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="confirmDeactivate('${e.id}','${e.name}')">삭제</button>
+                <button class="btn btn-ghost btn-sm" onclick="openEditEmployee('${e.id}')">수정</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="confirmDeactivate('${e.id}')">삭제</button>
               </td>
             </tr>
           `).join('')}
@@ -154,16 +154,18 @@ async function renderEmployeesTab(branchId) {
     }
   });
 
-  window.openEditEmployee = (id, name, role, openCapable, annualLeaveTotal, hireDate) => {
+  window.openEditEmployee = (id) => {
+    const e = employees.find(x => x.id === id);
+    if (!e) return;
     editingId = id;
     document.getElementById('emp-modal-title').textContent = '직원 수정';
-    document.getElementById('emp-name').value = name;
-    document.getElementById('emp-role').value = role;
-    document.getElementById('emp-open-capable').checked = !!openCapable;
-    const hasAnnual = annualLeaveTotal != null && annualLeaveTotal !== 'null';
+    document.getElementById('emp-name').value = e.name;
+    document.getElementById('emp-role').value = e.role;
+    document.getElementById('emp-open-capable').checked = !!e.open_capable;
+    const hasAnnual = e.annual_leave_total != null;
     document.getElementById('emp-annual-leave-check').checked = hasAnnual;
-    document.getElementById('emp-annual-leave-total').value = hasAnnual ? annualLeaveTotal : '';
-    document.getElementById('emp-hire-date').value = hireDate || '';
+    document.getElementById('emp-annual-leave-total').value = hasAnnual ? e.annual_leave_total : '';
+    document.getElementById('emp-hire-date').value = e.hire_date || '';
     updateOpenCapableVisibility();
     updateAnnualLeaveVisibility();
     document.getElementById('emp-modal').classList.add('open');
@@ -178,8 +180,9 @@ async function renderEmployeesTab(branchId) {
     renderEmployeesTab(branchId);
   };
 
-  window.confirmDeactivate = async (id, name) => {
-    if (confirm(`"${name}"을(를) 삭제하시겠습니까?`)) {
+  window.confirmDeactivate = async (id) => {
+    const e = employees.find(x => x.id === id);
+    if (confirm(`"${e?.name || ''}"을(를) 삭제하시겠습니까?`)) {
       await deactivateEmployee(id);
       renderEmployeesTab(branchId);
     }

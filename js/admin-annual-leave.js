@@ -1,13 +1,3 @@
-// 다음 발생 예정(월차/주년). 발생 규칙은 leave-accrual.js의 expectedAccruals 사용(가산휴가 반영).
-function getNextAccrualInfo(hireDate, today) {
-  const all = expectedAccruals(hireDate, '2035-01-01');
-  const upcoming = all.filter(e => e.date >= today);
-  return {
-    nextMonthly: upcoming.find(e => e.kind === 'monthly')    || null,
-    nextAnniv:   upcoming.find(e => e.kind === 'anniversary') || null,
-  };
-}
-
 async function renderAnnualLeaveTab(branchId) {
   const el = document.getElementById('annual-leave');
   el.innerHTML = '<p style="color:var(--gray)">불러오는 중...</p>';
@@ -21,7 +11,8 @@ async function renderAnnualLeaveTab(branchId) {
 
   const withHire   = employees.filter(e => e.hire_date);
   const statsMap   = new Map(stats.map(s => [s.emp.id, s]));
-  const today      = new Date().toISOString().split('T')[0];
+  const _today     = new Date(); // 로컬(KST) 기준 — toISOString은 UTC라 자정~오전9시 하루 밀림
+  const today      = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
   const fulltime   = employees.filter(e => e.employment_type !== 'parttime');
   const months     = Array.from({length: 12}, (_, i) => i + 1);
   const empMonthStats = fulltime.map(emp => {
@@ -47,29 +38,28 @@ async function renderAnnualLeaveTab(branchId) {
       : `<div class="card" style="padding:0;">
           <table class="data-table">
             <thead>
-              <tr><th>직원</th><th>입사일</th><th>발생</th><th>사용</th><th>잔여</th><th>다음 발생일</th><th></th></tr>
+              <tr><th>직원</th><th>입사일</th><th>발생</th><th>사용</th><th>잔여</th><th>발생 처리(밀린 것)</th><th></th></tr>
             </thead>
             <tbody>
               ${withHire.map(e => {
                 const s = statsMap.get(e.id) || { total: 0, used: 0, remaining: 0, accrualDates: new Set() };
                 const color = s.remaining < 0 ? 'badge-rejected' : s.remaining > 0 ? 'badge-approved' : '';
-                const { nextMonthly, nextAnniv } = getNextAccrualInfo(e.hire_date, today);
-                const monthlyPending = nextMonthly && !s.accrualDates.has(nextMonthly.date);
-                const monthLabel = nextMonthly ? nextMonthly.date.slice(5, 7).replace(/^0/, '') + '월' : '';
+                // 오늘까지 발생해야 하는데 ledger에 아직 없는 항목(과거 포함). 만근 달만 클릭, 결근 달은 안 누르면 됨.
+                const pending = expectedAccruals(e.hire_date, today).filter(p => !s.accrualDates.has(p.date));
                 return `
                   <tr>
-                    <td><strong>${e.name}</strong></td>
+                    <td><strong>${esc(e.name)}</strong></td>
                     <td style="font-size:12px;color:var(--gray);">${e.hire_date}</td>
                     <td>${s.total}일</td>
                     <td>${s.used}일</td>
                     <td><span class="badge ${color}">${s.remaining}일</span></td>
-                    <td style="font-size:12px;line-height:1.8;">
-                      ${nextMonthly ? `<div style="color:var(--gray);">월차 ${nextMonthly.date}</div>` : ''}
-                      ${nextAnniv   ? `<div style="color:var(--olive);">${nextAnniv.note} (${nextAnniv.days}일) ${nextAnniv.date}</div>` : ''}
+                    <td style="font-size:12px;line-height:1.9;">
+                      ${pending.length === 0
+                        ? '<span style="color:var(--gray);">최신</span>'
+                        : pending.map(p => `<button class="btn btn-ghost btn-sm" style="color:var(--olive);padding:2px 6px;margin:1px 0;" onclick="addAccrual('${e.id}','${p.date}',${p.days},'${p.kind === 'monthly' ? '월차' : p.note}')">${p.kind === 'monthly' ? `${Number(p.date.slice(5, 7))}월 만근 +1` : `${p.note} +${p.days}`}</button>`).join('<br>')}
                     </td>
                     <td style="white-space:nowrap;">
-                      ${monthlyPending ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="runMonthlyAccrual('${e.id}','${e.name}','${nextMonthly.date}','${monthLabel}')">${monthLabel} 만근</button>` : ''}
-                      <button class="btn btn-ghost btn-sm" onclick="openLedger('${e.id}','${e.name}')">이력</button>
+                      <button class="btn btn-ghost btn-sm" onclick="openLedger('${e.id}')">이력</button>
                     </td>
                   </tr>`;
               }).join('')}
@@ -95,7 +85,7 @@ async function renderAnnualLeaveTab(branchId) {
               ? '<tr><td colspan="15" style="text-align:center;color:var(--gray);">데이터 없음</td></tr>'
               : empMonthStats.map(s => `
                 <tr>
-                  <td><strong>${s.emp.name}</strong></td>
+                  <td><strong>${esc(s.emp.name)}</strong></td>
                   ${s.normalCounts.map(c => `<td style="text-align:center;color:${c>0?'var(--dark)':'#ddd'};">${c>0?c:'·'}</td>`).join('')}
                   <td style="text-align:center;">${s.annualCount > 0 ? `<span class="badge badge-approved">${s.annualCount}</span>` : '·'}</td>
                   <td style="text-align:center;font-weight:700;">${s.total > 0 ? s.total : '·'}</td>
@@ -151,7 +141,7 @@ async function renderAnnualLeaveTab(branchId) {
                   <td style="font-size:12px;">${e.date}</td>
                   <td><span class="badge ${e.type==='accrual'?'badge-approved':'badge-rejected'}">${e.type==='accrual'?'발생':'사용'}</span></td>
                   <td>${e.days}일</td>
-                  <td style="font-size:12px;color:var(--gray);">${e.note || '—'}</td>
+                  <td style="font-size:12px;color:var(--gray);">${esc(e.note || '—')}</td>
                   <td><button class="btn btn-ghost btn-sm" style="color:var(--red);" data-del-id="${e.id}">삭제</button></td>
                 </tr>`).join('')
             }
@@ -169,16 +159,19 @@ async function renderAnnualLeaveTab(branchId) {
     });
   }
 
-  window.openLedger = async (empId, empName) => {
+  window.openLedger = async (empId) => {
+    const emp = employees.find(x => x.id === empId);
     currentEmpId = empId;
-    document.getElementById('ledger-title').textContent = `${empName} — 연차 이력`;
+    document.getElementById('ledger-title').textContent = `${emp?.name || ''} — 연차 이력`;
     await refreshLedger();
     document.getElementById('ledger-modal').classList.add('open');
   };
 
-  window.runMonthlyAccrual = async (empId, empName, date, monthLabel) => {
-    if (!confirm(`${empName} ${monthLabel} 만근 처리 — ${date} +1일 추가하시겠습니까?`)) return;
-    await addLedgerEntry({ employeeId: empId, date, type: 'accrual', days: 1, note: '월차' });
+  // 발생 처리(월차/주년 공용). 날짜·일수·메모는 expectedAccruals가 만든 안전한 값.
+  window.addAccrual = async (empId, date, days, note) => {
+    const emp = employees.find(x => x.id === empId);
+    if (!confirm(`${emp?.name || ''} — ${date} ${note} +${days}일 발생 처리할까요?`)) return;
+    await addLedgerEntry({ employeeId: empId, date, type: 'accrual', days: Number(days), note });
     renderAnnualLeaveTab(branchId);
   };
 
@@ -197,22 +190,4 @@ async function renderAnnualLeaveTab(branchId) {
     renderAnnualLeaveTab(branchId);
   });
 
-  window.runAutoAccrual = async (empId, empName, hireDate) => {
-    const today    = new Date().toISOString().split('T')[0];
-    const expected = expectedAccruals(hireDate, today);
-    const existing = await getAnnualLedger(empId);
-    // 이미 발생 항목이 있는 날짜는 건너뜀 (note 무관, 날짜 기준)
-    const existingDates = new Set(
-      existing.filter(e => e.type === 'accrual').map(e => e.date)
-    );
-    const toAdd = expected.filter(e => !existingDates.has(e.date));
-    if (toAdd.length === 0) {
-      return alert(`${empName}: 추가할 발생 항목이 없습니다.`);
-    }
-    for (const e of toAdd) {
-      await addLedgerEntry({ employeeId: empId, date: e.date, type: 'accrual', days: e.days, note: e.note });
-    }
-    alert(`${empName}: ${toAdd.length}건 발생 추가됨`);
-    renderAnnualLeaveTab(branchId);
-  };
 }

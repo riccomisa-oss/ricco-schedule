@@ -146,7 +146,7 @@ async function renderRequestTab(employee, branchId) {
               const isPending  = r.status === 'pending';
               const isApproved = ['approved', 'override_approved'].includes(r.status);
               const isRejected = ['rejected', 'override_rejected'].includes(r.status);
-              const canCancel  = !['override_approved', 'override_rejected'].includes(r.status);
+              const canCancel  = r.status === 'pending'; // 대기 건만 직원 자가 취소 (승인 후 변경은 관리자만)
               const badge = isPending
                 ? '<span class="badge" style="background:var(--light);color:var(--gray);">대기 중</span>'
                 : isApproved
@@ -170,7 +170,7 @@ async function renderRequestTab(employee, branchId) {
                     </div>
                   </div>
                   ${isRejected && r.rejection_reason
-                    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--light);font-size:12px;color:var(--red);">거절 사유: ${r.rejection_reason}</div>`
+                    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--light);font-size:12px;color:var(--red);">거절 사유: ${esc(r.rejection_reason)}</div>`
                     : ''}
                 </div>`;
             }).join('')

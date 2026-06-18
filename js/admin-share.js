@@ -9,7 +9,7 @@ async function renderShareTab(branchId) {
   el.innerHTML = `
     <h2 style="margin-bottom:16px;">공유 링크</h2>
     <div class="card">
-      <h3 style="margin-bottom:8px;">${branch?.name || ''} — 직원용 링크</h3>
+      <h3 style="margin-bottom:8px;">${esc(branch?.name || '')} — 직원용 링크</h3>
       <p style="font-size:13px;color:var(--gray);margin-bottom:12px;">
         이 링크를 직원들에게 공유하면 휴무 신청과 스케줄 확인을 할 수 있습니다.
       </p>
@@ -24,7 +24,7 @@ async function renderShareTab(branchId) {
       <h3 style="margin-bottom:8px;">카카오톡 공유 문구</h3>
       <textarea readonly rows="5"
         style="width:100%;border:1px solid var(--light);border-radius:6px;padding:12px;font-size:13px;background:var(--cream);resize:none;"
-      >[리꼬 피자 ${branch?.name || ''}]
+      >[리꼬 피자 ${esc(branch?.name || '')}]
 휴무 신청 및 스케줄 확인 링크입니다.
 아래 링크에 접속 후 본인 이름을 선택해 주세요.
 

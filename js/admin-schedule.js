@@ -313,6 +313,13 @@ async function renderScheduleTab(branchId) {
               min="${year}-${String(month).padStart(2,'0')}-01"
               max="${year}-${String(month).padStart(2,'0')}-${String(new Date(year, month, 0).getDate()).padStart(2,'0')}" />
           </div>
+          <div class="form-group">
+            <label>단위</label>
+            <select id="al-days">
+              <option value="1">종일 (1일)</option>
+              <option value="0.5">반차 (0.5일)</option>
+            </select>
+          </div>
           <div class="modal-actions">
             <button class="btn btn-ghost" id="al-cancel-btn">취소</button>
             <button class="btn btn-primary" id="al-save-btn">저장</button>
@@ -378,6 +385,7 @@ async function renderScheduleTab(branchId) {
       document.getElementById('al-save-btn').addEventListener('click', async () => {
         const empId = document.getElementById('al-employee').value;
         const date  = document.getElementById('al-date').value;
+        const useDays = Number(document.getElementById('al-days').value) || 1;
         if (!date) return alert('날짜를 선택하세요.');
 
         const already = requests.find(r => r.employee_id === empId && r.date === date
@@ -385,15 +393,15 @@ async function renderScheduleTab(branchId) {
         if (already) return alert('해당 날짜에 이미 신청/승인된 휴무·연차가 있습니다.');
 
         const stat = alStatsMap.get(empId);
-        if (stat && stat.remaining <= 0) {
-          if (!confirm('연차 잔여일이 없습니다. 그래도 입력하시겠습니까?')) return;
+        if (stat && stat.remaining < useDays) {
+          if (!confirm('연차 잔여가 부족합니다. 그래도 입력하시겠습니까?')) return;
         }
 
         try {
-          await createDayOffRequest({ employeeId: empId, date, type: 'annual', status: 'override_approved' });
+          await createDayOffRequest({ employeeId: empId, date, type: 'annual', status: 'override_approved', days: useDays });
           const ledger = await getAnnualLedger(empId);
           if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-            await addLedgerEntry({ employeeId: empId, date, type: 'usage', days: 1, note: '연차 사용(관리자 입력)' });
+            await addLedgerEntry({ employeeId: empId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차(관리자 입력)' : '연차 사용(관리자 입력)' });
           }
           document.getElementById('al-modal').classList.remove('open');
           render();

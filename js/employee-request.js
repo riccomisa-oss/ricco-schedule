@@ -36,23 +36,23 @@ async function renderRequestTab(employee, branchId) {
 
   async function render() {
     const now2 = new Date();
-    const [allEmployees, conditions, myRequests, annualStats, pendingAnnualCount] = await Promise.all([
+    const [allEmployees, conditions, myRequests, annualStats, pendingAnnualDays] = await Promise.all([
       getEmployees(branchId),
       getConditions(branchId),
       getEmployeeDayOffRequests(employee.id, year, month),
       getAnnualLeaveStats(branchId, year),
-      getEmployeePendingAnnualCount(employee.id),
+      getEmployeePendingAnnualDays(employee.id),
     ]);
 
     const allRequests = await getDayOffRequests(branchId, year, month);
     const approvedAll = allRequests.filter(r => ['approved', 'override_approved'].includes(r.status));
 
-    // 연차 잔여일 (전기간 잔여 − 전기간 pending 연차 = 지금 새로 더 쓸 수 있는 양)
+    // 연차 잔여일 (전기간 잔여 − 전기간 pending 연차 일수 = 지금 새로 더 쓸 수 있는 양)
     const myStat = annualStats.find(s => s.emp.id === employee.id);
     const rawRemaining = myStat ? myStat.remaining : 0;
-    const effRemaining = effectiveAnnualRemaining(rawRemaining, pendingAnnualCount);
-    // 이번 달 기제출 비거절(휴무+연차) 건수 — 월 합산 캡의 baseline
-    const monthBaseline = activeRequests(myRequests).length;
+    const effRemaining = effectiveAnnualRemaining(rawRemaining, pendingAnnualDays);
+    // 이번 달 기제출 비거절(휴무+연차) 일수 합 — 월 합산 캡의 baseline
+    const monthBaseline = sumDays(activeRequests(myRequests));
 
     const isCurrentMonth = year === now2.getFullYear() && month === now2.getMonth() + 1;
     const isPastMonth = year < now2.getFullYear() || (year === now2.getFullYear() && month < now2.getMonth() + 1);
@@ -77,7 +77,7 @@ async function renderRequestTab(employee, branchId) {
         ${employee.hire_date != null ? `
         <div style="display:flex;gap:8px;margin-bottom:20px;">
           <button id="type-normal" class="btn btn-primary" style="flex:1;padding:10px 0;font-size:14px;font-weight:700;">휴무 요청</button>
-          <button id="type-annual" class="btn btn-ghost" style="flex:1;padding:10px 0;font-size:14px;font-weight:600;${effRemaining < 1 ? 'opacity:0.4;cursor:not-allowed;' : ''}" ${effRemaining < 1 ? 'disabled title="잔여 연차가 없습니다"' : ''}>연차 사용${effRemaining < 1 ? ' (잔여 0)' : ''}</button>
+          <button id="type-annual" class="btn btn-ghost" style="flex:1;padding:10px 0;font-size:14px;font-weight:600;${effRemaining < 0.5 ? 'opacity:0.4;cursor:not-allowed;' : ''}" ${effRemaining < 0.5 ? 'disabled title="잔여 연차가 없습니다"' : ''}>연차 사용${effRemaining < 0.5 ? ' (잔여 0)' : ''}</button>
         </div>
         <input type="hidden" id="req-type" value="normal" />
         ` : `
@@ -89,9 +89,14 @@ async function renderRequestTab(employee, branchId) {
 
         ${myStat ? `
         <div id="annual-info" style="display:none;background:#f1f8e9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
-          연차 잔여 <strong id="annual-remaining-num" style="color:var(--olive);font-size:15px;">${effRemaining}일</strong>
-          <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용${pendingAnnualCount > 0 ? `, 대기 ${pendingAnnualCount}일` : ''})</span>
-          <span id="annual-picked-hint" style="color:var(--olive);margin-left:6px;font-weight:600;"></span>
+          <div>연차 잔여 <strong id="annual-remaining-num" style="color:var(--olive);font-size:15px;">${effRemaining}일</strong>
+          <span style="color:var(--gray);margin-left:4px;">(총 ${myStat.total}일 중 ${myStat.used}일 사용${pendingAnnualDays > 0 ? `, 대기 ${pendingAnnualDays}일` : ''})</span>
+          <span id="annual-picked-hint" style="color:var(--olive);margin-left:6px;font-weight:600;"></span></div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+            <span style="color:var(--gray);">사용 단위:</span>
+            <button type="button" id="amt-full" class="btn btn-primary btn-sm" style="padding:3px 10px;">종일(1일)</button>
+            <button type="button" id="amt-half" class="btn btn-ghost btn-sm" style="padding:3px 10px;">반차(0.5일)</button>
+          </div>
         </div>` : ''}
 
         <div id="calendar-section" style="margin-bottom:16px;">
@@ -164,7 +169,7 @@ async function renderRequestTab(employee, branchId) {
                   : '<span class="badge badge-rejected">거절</span>';
               const [, m, d] = r.date.split('-');
               const dateLabel = `${Number(m)}월 ${Number(d)}일`;
-              const typeLabel = r.type === 'normal' ? '휴무 요청' : '연차 사용';
+              const typeLabel = r.type === 'normal' ? '휴무 요청' : (Number(r.days) === 0.5 ? '연차 반차' : '연차 사용');
               return `
                 <div class="card" style="margin-bottom:10px;padding:14px 16px;">
                   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -203,25 +208,31 @@ async function renderRequestTab(employee, branchId) {
       }
     };
 
-    if (isRequestPeriodOpen()) {
-      // 날짜 → 유형('normal'|'annual') 매핑. 휴무·연차를 한 캘린더에서 함께 고른다.
+    if (onTarget) {
+      // 날짜 → {유형, 일수} 매핑. 휴무·연차(종일/반차)를 한 캘린더에서 함께 고른다.
       const selected = new Map();
+      let amountDays = 1; // 연차 사용 단위: 1(종일) | 0.5(반차)
       const btnNormal = document.getElementById('type-normal');
       const btnAnnual = document.getElementById('type-annual');
       const reqTypeEl = document.getElementById('req-type');
       const annualInfo = document.getElementById('annual-info');
-      const TYPE_BG = { normal: 'var(--red)', annual: 'var(--olive)' };
+      const btnFull = document.getElementById('amt-full');
+      const btnHalf = document.getElementById('amt-half');
 
       const currentMode = () => (reqTypeEl ? reqTypeEl.value : 'normal');
-      const selectedList = () => [...selected.entries()].map(([date, type]) => ({ date, type }));
+      const selectedList = () => [...selected.entries()].map(([date, v]) => ({ date, type: v.type, days: v.days }));
 
+      function cellBg(v) {
+        if (v.type === 'normal') return 'var(--red)';
+        return v.days === 0.5 ? '#aed581' : 'var(--olive)'; // 반차는 옅은 초록
+      }
       function paintCell(ds) {
         const btn = document.querySelector(`[data-date="${ds}"]`);
         if (!btn || btn.disabled) return;
-        const t = selected.get(ds);
-        if (t) {
+        const v = selected.get(ds);
+        if (v) {
           if (!btn._origColor) btn._origColor = btn.style.color;
-          btn.style.background = TYPE_BG[t];
+          btn.style.background = cellBg(v);
           btn.style.color = '#fff';
           btn.style.fontWeight = '700';
         } else {
@@ -232,24 +243,25 @@ async function renderRequestTab(employee, branchId) {
       }
 
       function refreshSelectionUI() {
-        // submit가 읽을 직렬화: "날짜:유형,날짜:유형"
+        // submit가 읽을 직렬화: "날짜:유형:일수"
         const entries = [...selected.entries()].sort((a, b) => a[0].localeCompare(b[0]));
         const reqDate = document.getElementById('req-date');
-        if (reqDate) reqDate.value = entries.map(([d, t]) => `${d}:${t}`).join(',');
+        if (reqDate) reqDate.value = entries.map(([d, v]) => `${d}:${v.type}:${v.days}`).join(',');
 
-        const counts = selectionCounts(entries.map(([date, type]) => ({ date, type })));
+        const counts = selectionDays(entries.map(([date, v]) => ({ type: v.type, days: v.days })));
         const lbl = document.getElementById('selected-date-label');
         if (lbl) {
           if (entries.length === 0) {
             lbl.textContent = '';
           } else {
-            const parts = entries.map(([ds, t]) => {
+            const parts = entries.map(([ds, v]) => {
               const [, m, d] = ds.split('-');
               const dow = ['일','월','화','수','목','금','토'][new Date(ds).getDay()];
-              return `${t === 'annual' ? '🌿' : ''}${Number(m)}월 ${Number(d)}일(${dow})`;
+              const tag = v.type === 'annual' ? (v.days === 0.5 ? '🌿반차 ' : '🌿') : '';
+              return `${tag}${Number(m)}월 ${Number(d)}일(${dow})`;
             });
             lbl.innerHTML = parts.join(' · ') +
-              `<br><span style="font-size:12px;color:var(--gray);font-weight:500;">합계 ${monthBaseline + entries.length}/${MAX_MONTHLY_OFFS}일${counts.annual ? ` · 연차 ${counts.annual}일` : ''}</span>`;
+              `<br><span style="font-size:12px;color:var(--gray);font-weight:500;">합계 ${monthBaseline + counts.total}/${MAX_MONTHLY_OFFS}일${counts.annual ? ` · 연차 ${counts.annual}일` : ''}</span>`;
           }
         }
         const hint = document.getElementById('annual-picked-hint');
@@ -258,7 +270,7 @@ async function renderRequestTab(employee, branchId) {
         const infoEl = document.getElementById('date-off-info');
         if (infoEl) {
           const names = new Set();
-          selected.forEach((_t, ds) => {
+          selected.forEach((_v, ds) => {
             approvedAll
               .filter(r => r.date === ds && r.employee_id !== employee.id)
               .forEach(r => names.add(r.employees?.name || allEmployees.find(emp => emp.id === r.employee_id)?.name || '?'));
@@ -269,25 +281,26 @@ async function renderRequestTab(employee, branchId) {
 
       window.pickDate = (ds) => {
         const mode = currentMode();
+        const addDays = mode === 'annual' ? amountDays : 1;
         const resultEl = document.getElementById('request-result');
-        const prev = selected.get(ds); // undefined | 'normal' | 'annual'
+        const prev = selected.get(ds); // undefined | {type, days}
 
-        if (prev === mode) {
-          selected.delete(ds);            // 같은 모드 재클릭 → 해제
+        if (prev && prev.type === mode && prev.days === addDays) {
+          selected.delete(ds);              // 같은 유형·단위 재클릭 → 해제
           paintCell(ds); refreshSelectionUI();
           if (resultEl) resultEl.innerHTML = '';
           return;
         }
 
-        if (prev) selected.delete(ds);    // 다른 모드로 전환 — 후보 상태에서 캡 검증
-        const check = canAddSelection({ mode, baseline: monthBaseline, selected: selectedList(), effRemaining });
+        if (prev) selected.delete(ds);      // 유형/단위 변경 — 후보 상태에서 캡 재검증
+        const check = canAddSelection({ mode, addDays, baseline: monthBaseline, selected: selectedList(), effRemaining });
         if (!check.ok) {
-          if (prev) selected.set(ds, prev); // 전환 실패 → 원상복구
+          if (prev) selected.set(ds, prev); // 실패 → 원상복구
           paintCell(ds); refreshSelectionUI();
           if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">${check.reason}</div>`;
           return;
         }
-        selected.set(ds, mode);
+        selected.set(ds, { type: mode, days: addDays });
         paintCell(ds); refreshSelectionUI();
         if (resultEl) resultEl.innerHTML = '';
       };
@@ -299,13 +312,21 @@ async function renderRequestTab(employee, branchId) {
           btnNormal.className = isAnnual ? 'btn btn-ghost' : 'btn btn-primary';
           btnNormal.style.cssText = 'flex:1;padding:10px 0;font-size:14px;font-weight:700;';
           btnAnnual.className = isAnnual ? 'btn btn-primary' : 'btn btn-ghost';
-          btnAnnual.style.cssText = `flex:1;padding:10px 0;font-size:14px;font-weight:700;${effRemaining < 1 ? 'opacity:0.4;cursor:not-allowed;' : ''}`;
+          btnAnnual.style.cssText = `flex:1;padding:10px 0;font-size:14px;font-weight:700;${effRemaining < 0.5 ? 'opacity:0.4;cursor:not-allowed;' : ''}`;
         }
         if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
       }
 
+      function setAmount(d) {
+        amountDays = d;
+        if (btnFull) { btnFull.className = d === 1 ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'; btnFull.style.padding = '3px 10px'; }
+        if (btnHalf) { btnHalf.className = d === 0.5 ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'; btnHalf.style.padding = '3px 10px'; }
+      }
+
       if (btnNormal) btnNormal.addEventListener('click', () => setType('normal'));
       if (btnAnnual && !btnAnnual.disabled) btnAnnual.addEventListener('click', () => setType('annual'));
+      if (btnFull) btnFull.addEventListener('click', () => setAmount(1));
+      if (btnHalf) btnHalf.addEventListener('click', () => setAmount(0.5));
     }
 
     document.getElementById('prev-month-emp').addEventListener('click', () => {
@@ -324,8 +345,8 @@ async function renderRequestTab(employee, branchId) {
         const raw = (document.getElementById('req-date').value || '').trim();
         const picks = raw
           ? raw.split(',').filter(Boolean).map(p => {
-              const [date, type] = p.split(':');
-              return { date, type: type === 'annual' ? 'annual' : 'normal' };
+              const [date, type, days] = p.split(':');
+              return { date, type: type === 'annual' ? 'annual' : 'normal', days: Number(days) || 1 };
             })
           : [];
 
@@ -356,6 +377,7 @@ async function renderRequestTab(employee, branchId) {
           employeeId: employee.id,
           date: p.date,
           type: p.type,
+          days: p.days,
           status: 'pending',
           rejectionReason: null,
         })));
@@ -364,9 +386,9 @@ async function renderRequestTab(employee, branchId) {
         if (failed > 0) {
           if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">⚠️ ${okN}일 신청됨, ${failed}일 실패. 잠시 후 다시 시도해주세요.</div>`;
         } else {
-          const annualN = picks.filter(p => p.type === 'annual').length;
-          const normalN = picks.length - annualN;
-          const summary = [normalN ? `휴무 ${normalN}일` : '', annualN ? `연차 ${annualN}일` : ''].filter(Boolean).join(' · ');
+          const normalDays = sumDays(picks.filter(p => p.type === 'normal'));
+          const annualDays = sumDays(picks.filter(p => p.type === 'annual'));
+          const summary = [normalDays ? `휴무 ${normalDays}일` : '', annualDays ? `연차 ${annualDays}일` : ''].filter(Boolean).join(' · ');
           if (resultEl) resultEl.innerHTML = `<div class="alert alert-success">✅ ${summary} 신청이 접수되었습니다. 관리자 확인 후 결정됩니다.</div>`;
         }
         render();

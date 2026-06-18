@@ -140,19 +140,19 @@ async function getEmployeeDayOffRequests(employeeId, year, month) {
   return data;
 }
 
-// 직원의 전 기간 pending 연차 수 — ledger에 아직 안 잡힌 연차(잔여에서 차감)
-async function getEmployeePendingAnnualCount(employeeId) {
+// 직원의 전 기간 pending 연차 "일수" 합 — ledger에 아직 안 잡힌 연차(잔여에서 차감)
+async function getEmployeePendingAnnualDays(employeeId) {
   const { data, error } = await db
     .from('day_off_requests')
-    .select('id')
+    .select('days')
     .eq('employee_id', employeeId)
     .eq('type', 'annual')
     .eq('status', 'pending');
   if (error) throw error;
-  return (data || []).length;
+  return (data || []).reduce((s, r) => s + (Number(r.days) || 1), 0);
 }
 
-async function createDayOffRequest({ employeeId, date, type, status, rejectionReason }) {
+async function createDayOffRequest({ employeeId, date, type, status, rejectionReason, days = 1 }) {
   const { data, error } = await db
     .from('day_off_requests')
     .insert({
@@ -160,6 +160,7 @@ async function createDayOffRequest({ employeeId, date, type, status, rejectionRe
       date,
       type,
       status,
+      days,                       // 반차(0.5)/종일(1)
       rejection_reason: rejectionReason || null,
     })
     .select()

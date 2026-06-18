@@ -119,7 +119,7 @@ async function renderRequestsTab(branchId) {
                     <tr${isPending ? ' style="background:#fffbf0;"' : ''}>
                       <td>${esc(emp?.name || '-')}</td>
                       <td>${r.date}</td>
-                      <td>${r.type === 'normal' ? '휴무 요청' : '연차 사용'}</td>
+                      <td>${r.type === 'normal' ? '휴무 요청' : (Number(r.days) === 0.5 ? '연차 반차' : '연차 사용')}</td>
                       <td style="font-size:12px;color:var(--gray);">${new Date(r.requested_at).toLocaleString('ko-KR')}</td>
                       <td><span class="badge ${badgeMap[r.status] || ''}" style="${badgeStyle}">${labelMap[r.status] || r.status}</span></td>
                       <td style="font-size:12px;color:var(--gray);">${esc(r.rejection_reason || '-')}</td>
@@ -181,18 +181,20 @@ async function renderRequestsTab(branchId) {
         }
       }
       if (type === 'annual') {
+        const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
         const stats = await getAnnualLeaveStats(branchId, year);
         const st = stats.find(s => s.emp.id === employeeId);
-        if (st && st.remaining < 1) {
+        if (st && st.remaining < useDays) {
           const [, m, d] = date.split('-');
-          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차를 승인하면 잔여가 마이너스가 됩니다. 계속할까요?`)) return;
+          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차 ${useDays}일을 승인하면 마이너스가 됩니다. 계속할까요?`)) return;
         }
       }
       await resolveDayOffRequest(id, 'approved');
       if (type === 'annual') {
+        const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
         const ledger = await getAnnualLedger(employeeId);
         if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-          await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+          await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
         }
       }
       render();
@@ -207,12 +209,13 @@ async function renderRequestsTab(branchId) {
 
     window.doOverride = async (id, newStatus, type, employeeId, date) => {
       // 거절 연차를 '승인으로' 되돌릴 때도 잔여 음수 경고 (doApprove와 동일 가드)
+      const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
       if (type === 'annual' && newStatus === 'override_approved') {
         const stats = await getAnnualLeaveStats(branchId, year);
         const st = stats.find(s => s.emp.id === employeeId);
-        if (st && st.remaining < 1) {
+        if (st && st.remaining < useDays) {
           const [, m, d] = date.split('-');
-          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차를 승인하면 마이너스가 됩니다. 계속할까요?`)) return;
+          if (!confirm(`⚠️ ${st.emp?.name || ''} 연차 잔여 ${st.remaining}일.\n${Number(m)}월 ${Number(d)}일 연차 ${useDays}일을 승인하면 마이너스가 됩니다. 계속할까요?`)) return;
         }
       }
       await overrideDayOffRequest(id, newStatus);
@@ -222,7 +225,7 @@ async function renderRequestsTab(branchId) {
         } else if (newStatus === 'override_approved') {
           const ledger = await getAnnualLedger(employeeId);
           if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-            await addLedgerEntry({ employeeId, date, type: 'usage', days: 1, note: '연차 사용' });
+            await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
           }
         }
       }

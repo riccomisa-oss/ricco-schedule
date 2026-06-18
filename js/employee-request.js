@@ -31,6 +31,8 @@ async function renderRequestTab(employee, branchId) {
   if (isRequestPeriodOpen()) {
     ({ year, month } = nextMonth(year, month));
   }
+  // 신청 받는 대상 달(다음 달) 고정 — 다른 미래 달로 넘겨 선점 신청하는 것 방지
+  const targetY = year, targetM = month;
 
   async function render() {
     const now2 = new Date();
@@ -54,6 +56,8 @@ async function renderRequestTab(employee, branchId) {
 
     const isCurrentMonth = year === now2.getFullYear() && month === now2.getMonth() + 1;
     const isPastMonth = year < now2.getFullYear() || (year === now2.getFullYear() && month < now2.getMonth() + 1);
+    // 신청 폼은 '대상 달'에서만 노출 (다른 달은 조회만)
+    const onTarget = isRequestPeriodOpen() && year === targetY && month === targetM;
 
     el.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
@@ -67,7 +71,7 @@ async function renderRequestTab(employee, branchId) {
 
       <div id="request-result" style="margin-bottom:12px;"></div>
 
-      ${isRequestPeriodOpen() ? `
+      ${onTarget ? `
       <div class="card" style="margin-bottom:16px;padding:20px;">
 
         ${employee.hire_date != null ? `
@@ -128,6 +132,12 @@ async function renderRequestTab(employee, branchId) {
         </div>
 
         <button class="btn btn-primary" onclick="submitDayOffRequest()" style="width:100%;padding:14px;font-size:15px;border-radius:8px;font-weight:700;letter-spacing:0.02em;">신청하기</button>
+      </div>
+      ` : isRequestPeriodOpen() ? `
+      <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
+        <div style="font-size:28px;margin-bottom:10px;">📅</div>
+        <div style="font-weight:600;margin-bottom:6px;">${targetM}월 신청만 받는 중입니다</div>
+        <div style="font-size:13px;color:var(--gray);">상단 날짜를 ${targetY}년 ${targetM}월로 맞춰 신청해 주세요.</div>
       </div>
       ` : `
       <div class="card" style="margin-bottom:16px;text-align:center;padding:28px 16px;">
@@ -318,6 +328,13 @@ async function renderRequestTab(employee, branchId) {
               return { date, type: type === 'annual' ? 'annual' : 'normal' };
             })
           : [];
+
+        // 대상 달(다음 달) 외 신청 차단 — 다른 미래 달 선점 방지
+        const targetYM = `${targetY}-${String(targetM).padStart(2, '0')}`;
+        if (picks.some(p => p.date.slice(0, 7) !== targetYM)) {
+          if (resultEl) resultEl.innerHTML = `<div class="alert alert-error">❌ ${targetM}월 신청만 가능합니다.</div>`;
+          return;
+        }
 
         // 월 합산 3일 + 잔여 연차 최종 검증 (R1/R2)
         const check = validateSubmission({ baseline: monthBaseline, selected: picks, effRemaining });

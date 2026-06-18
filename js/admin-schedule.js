@@ -300,9 +300,9 @@ async function renderScheduleTab(branchId) {
           <div class="form-group">
             <label>직원</label>
             <select id="al-employee">
-              ${allEmps.filter(e => e.annual_leave_total != null).map(e => `<option value="${e.id}">${esc(e.name)} (${e.role.startsWith('kitchen') ? '주방' : '홀'})</option>`).join('')}
+              ${allEmps.filter(e => e.hire_date != null).map(e => `<option value="${e.id}">${esc(e.name)} (${e.role.startsWith('kitchen') ? '주방' : '홀'})</option>`).join('')}
             </select>
-            ${allEmps.filter(e => e.annual_leave_total != null).length === 0
+            ${allEmps.filter(e => e.hire_date != null).length === 0
               ? '<p style="color:var(--gray);font-size:12px;margin-top:4px;">연차 설정된 직원이 없습니다.</p>'
               : ''}
           </div>

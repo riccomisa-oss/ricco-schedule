@@ -3,7 +3,7 @@
   --olive: #6B7A5C;
   --red:   #C0392B;
   --dark:  #2C2C2C;
-  --gray:  #8A8A8A;
+  --gray:  #6B6B6B;
   --light: #F0EBE3;
   --white: #FFFFFF;
   --approved-bg: #E8F5E9;
@@ -192,7 +192,7 @@ header span { color: var(--gray); font-size: 14px; }
 
   /* 터치 입력 여유 */
   .form-group input,
-  .form-group select { padding: 12px; font-size: 15px; }
+  .form-group select { padding: 12px; font-size: 16px; } /* iOS 포커스 줌 방지(16px) */
 
   .btn { font-size: 14px; }
   .btn-sm { padding: 7px 12px; font-size: 12px; }

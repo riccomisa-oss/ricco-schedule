@@ -1,39 +1,11 @@
+// 다음 발생 예정(월차/주년). 발생 규칙은 leave-accrual.js의 expectedAccruals 사용(가산휴가 반영).
 function getNextAccrualInfo(hireDate, today) {
-  const all = computeExpectedAccruals(hireDate, '2035-01-01');
+  const all = expectedAccruals(hireDate, '2035-01-01');
   const upcoming = all.filter(e => e.date >= today);
   return {
-    nextMonthly: upcoming.find(e => e.days === 1)  || null,
-    nextAnniv:   upcoming.find(e => e.days === 15) || null,
+    nextMonthly: upcoming.find(e => e.kind === 'monthly')    || null,
+    nextAnniv:   upcoming.find(e => e.kind === 'anniversary') || null,
   };
-}
-
-function computeExpectedAccruals(hireDate, asOf) {
-  const [hy, hm, hd] = hireDate.split('-').map(Number);
-  const until = asOf || new Date().toISOString().split('T')[0];
-  const entries = [];
-
-  const pad = n => String(n).padStart(2, '0');
-  const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
-  const toDateStr = (y, m, d) => `${y}-${pad(m)}-${pad(Math.min(d, daysInMonth(y, m)))}`;
-
-  // 입사 1~11개월: 매월 1일 (만근 시 발생 — 수동 또는 발생 업데이트로 추가)
-  for (let m = 1; m <= 11; m++) {
-    const totalM = hm - 1 + m;
-    const y = hy + Math.floor(totalM / 12);
-    const mo = (totalM % 12) + 1;
-    const dateStr = toDateStr(y, mo, hd);
-    if (dateStr > until) break;
-    entries.push({ date: dateStr, type: 'accrual', days: 1, note: `입사 ${m}개월차` });
-  }
-
-  // 입사 1, 2, 3… 주년: 15일
-  for (let y = 1; y <= 10; y++) {
-    const dateStr = toDateStr(hy + y, hm, hd);
-    if (dateStr > until) break;
-    entries.push({ date: dateStr, type: 'accrual', days: 15, note: `입사 ${y}년차 연차` });
-  }
-
-  return entries.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 async function renderAnnualLeaveTab(branchId) {
@@ -93,7 +65,7 @@ async function renderAnnualLeaveTab(branchId) {
                     <td><span class="badge ${color}">${s.remaining}일</span></td>
                     <td style="font-size:12px;line-height:1.8;">
                       ${nextMonthly ? `<div style="color:var(--gray);">월차 ${nextMonthly.date}</div>` : ''}
-                      ${nextAnniv   ? `<div style="color:var(--olive);">${nextAnniv.note} ${nextAnniv.date}</div>` : ''}
+                      ${nextAnniv   ? `<div style="color:var(--olive);">${nextAnniv.note} (${nextAnniv.days}일) ${nextAnniv.date}</div>` : ''}
                     </td>
                     <td style="white-space:nowrap;">
                       ${monthlyPending ? `<button class="btn btn-ghost btn-sm" style="color:var(--olive);" onclick="runMonthlyAccrual('${e.id}','${e.name}','${nextMonthly.date}','${monthLabel}')">${monthLabel} 만근</button>` : ''}
@@ -227,7 +199,7 @@ async function renderAnnualLeaveTab(branchId) {
 
   window.runAutoAccrual = async (empId, empName, hireDate) => {
     const today    = new Date().toISOString().split('T')[0];
-    const expected = computeExpectedAccruals(hireDate, today);
+    const expected = expectedAccruals(hireDate, today);
     const existing = await getAnnualLedger(empId);
     // 이미 발생 항목이 있는 날짜는 건너뜀 (note 무관, 날짜 기준)
     const existingDates = new Set(

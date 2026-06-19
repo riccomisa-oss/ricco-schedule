@@ -315,6 +315,11 @@ async function renderRequestTab(employee, branchId) {
           btnAnnual.style.cssText = `flex:1;padding:10px 0;font-size:14px;font-weight:700;${effRemaining < 0.5 ? 'opacity:0.4;cursor:not-allowed;' : ''}`;
         }
         if (annualInfo) annualInfo.style.display = type === 'annual' ? 'block' : 'none';
+        // 잔여 1일 미만이면 종일은 불가 → 반차 단위로 자동 전환 + 종일 버튼 비활성
+        if (type === 'annual' && effRemaining < 1) {
+          setAmount(0.5);
+          if (btnFull) { btnFull.disabled = true; btnFull.style.opacity = '0.4'; btnFull.style.cursor = 'not-allowed'; }
+        }
       }
 
       function setAmount(d) {

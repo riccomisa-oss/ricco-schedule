@@ -39,7 +39,7 @@ async function renderScheduleTab(branchId) {
 
     const adjApprovedOffDates = new Map();
     [...prevRequests, ...nextRequests]
-      .filter(r => ['approved', 'override_approved'].includes(r.status))
+      .filter(r => ['approved', 'override_approved'].includes(r.status) && !(r.type === 'annual' && Number(r.days) === 0.5))
       .forEach(r => {
         if (!adjApprovedOffDates.has(r.employee_id)) adjApprovedOffDates.set(r.employee_id, new Set());
         adjApprovedOffDates.get(r.employee_id).add(r.date);
@@ -47,7 +47,7 @@ async function renderScheduleTab(branchId) {
 
     const approvedOffDates = new Map();
     requests
-      .filter(r => ['approved', 'override_approved'].includes(r.status))
+      .filter(r => ['approved', 'override_approved'].includes(r.status) && !(r.type === 'annual' && Number(r.days) === 0.5))
       .forEach(r => {
         if (!approvedOffDates.has(r.employee_id)) approvedOffDates.set(r.employee_id, new Set());
         approvedOffDates.get(r.employee_id).add(r.date);
@@ -399,10 +399,8 @@ async function renderScheduleTab(branchId) {
 
         try {
           await createDayOffRequest({ employeeId: empId, date, type: 'annual', status: 'override_approved', days: useDays });
-          const ledger = await getAnnualLedger(empId);
-          if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-            await addLedgerEntry({ employeeId: empId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차(관리자 입력)' : '연차 사용(관리자 입력)' });
-          }
+          await deleteLedgerUsageByDate(empId, date); // 멱등: 같은 날 잔재 제거 후 정확한 일수 1건
+          await addLedgerEntry({ employeeId: empId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차(관리자 입력)' : '연차 사용(관리자 입력)' });
           document.getElementById('al-modal').classList.remove('open');
           render();
         } catch (err) {

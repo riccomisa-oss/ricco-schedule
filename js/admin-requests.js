@@ -192,10 +192,8 @@ async function renderRequestsTab(branchId) {
       await resolveDayOffRequest(id, 'approved');
       if (type === 'annual') {
         const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
-        const ledger = await getAnnualLedger(employeeId);
-        if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-          await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
-        }
+        await deleteLedgerUsageByDate(employeeId, date); // 멱등: 잔재 제거 후 정확한 일수 1건
+        await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
       }
       render();
     };
@@ -223,10 +221,8 @@ async function renderRequestsTab(branchId) {
         if (newStatus === 'override_rejected') {
           await deleteLedgerUsageByDate(employeeId, date);
         } else if (newStatus === 'override_approved') {
-          const ledger = await getAnnualLedger(employeeId);
-          if (!ledger.find(e => e.type === 'usage' && e.date === date)) {
-            await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
-          }
+          await deleteLedgerUsageByDate(employeeId, date); // 멱등
+          await addLedgerEntry({ employeeId, date, type: 'usage', days: useDays, note: useDays === 0.5 ? '연차 반차' : '연차 사용' });
         }
       }
       render();
@@ -251,7 +247,7 @@ function getConsecutiveWarnings(employees, requests, year, month, conditions, sc
   employees.forEach(emp => {
     const offDates = new Set([
       ...requests
-        .filter(r => r.employee_id === emp.id && ['approved', 'override_approved'].includes(r.status))
+        .filter(r => r.employee_id === emp.id && ['approved', 'override_approved'].includes(r.status) && !(r.type === 'annual' && Number(r.days) === 0.5))
         .map(r => r.date),
       ...(scheduledOffDates.get(emp.id) || []),
     ]);

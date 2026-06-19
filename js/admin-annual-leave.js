@@ -173,6 +173,13 @@ async function renderAnnualLeaveTab(branchId) {
   window.addAccrual = async (empId, date, days, note) => {
     const emp = employees.find(x => x.id === empId);
     if (!confirm(`${emp?.name || ''} — ${date} ${note} +${days}일 발생 처리할까요?`)) return;
+    // 멱등: 같은 날 발생이 이미 있으면 중단 (더블클릭/재클릭 이중 가산 방지)
+    const ledger = await getAnnualLedger(empId);
+    if (ledger.find(e => e.type === 'accrual' && e.date === date)) {
+      alert('이미 처리된 발생입니다.');
+      renderAnnualLeaveTab(branchId);
+      return;
+    }
     await addLedgerEntry({ employeeId: empId, date, type: 'accrual', days: Number(days), note });
     renderAnnualLeaveTab(branchId);
   };

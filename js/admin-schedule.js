@@ -611,22 +611,29 @@ function assignZoneOff(emps, approvedOffDates, daysInMonth, year, month, weekday
     eligible.slice(0, available).forEach(e => autoOff.get(e.id).add(dateStr));
   }
 
-  // Phase 3: 연속 근무 초과 방지 — 강제 휴무 삽입
+  // Phase 3: 연속근무 ≤ maxConsecutive 보장 (look-back)
+  // 연속이 max를 넘기려는 시점에, 그 연속 구간 [lastOff+1 .. day] 중
+  // 여유(정원 한도+정직원 보장) 있는 '가장 늦은 날'에 휴무를 삽입해 끊는다.
   for (const emp of emps) {
-    let streak = 0;
+    let lastOff = 0;
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${pfx}-${String(day).padStart(2,'0')}`;
-      const isEmpOff = approvedOffDates.get(emp.id)?.has(dateStr) || autoOff.get(emp.id).has(dateStr);
-      if (isEmpOff) { streak = 0; continue; }
-      streak++;
-      if (streak <= maxConsecutive) continue;
+      if (approvedOffDates.get(emp.id)?.has(dateStr) || autoOff.get(emp.id).has(dateStr)) { lastOff = day; continue; }
+      if (day - lastOff <= maxConsecutive) continue; // 아직 연속 ≤ max
 
-      const isWeekend = isHolidayOrWeekend(year, month, day);
-      const maxOff = N - (isWeekend ? weekendMin : weekdayMin);
-      if (alreadyOff(dateStr) >= maxOff) continue;
-      if (!canOff(emp.id, dateStr)) continue;
-      autoOff.get(emp.id).add(dateStr);
-      streak = 0;
+      let placed = false;
+      for (let x = day; x > lastOff; x--) {
+        const xs = `${pfx}-${String(x).padStart(2,'0')}`;
+        const we = isHolidayOrWeekend(year, month, x);
+        const maxOff = N - (we ? weekendMin : weekdayMin);
+        if (alreadyOff(xs) >= maxOff) continue;
+        if (!canOff(emp.id, xs)) continue;
+        autoOff.get(emp.id).add(xs);
+        lastOff = x;
+        placed = true;
+        break;
+      }
+      if (!placed) lastOff = day; // 구간에 여유 없음(용량 한계) — 불가피, 진행
     }
   }
 

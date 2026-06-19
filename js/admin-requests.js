@@ -166,19 +166,13 @@ async function renderRequestsTab(branchId) {
     }
 
     window.doApprove = async (id, type, employeeId, date) => {
-      if (type === 'normal') {
-        const alreadyApproved = requests.filter(r =>
-          r.id !== id &&
-          r.date === date &&
-          ['approved', 'override_approved'].includes(r.status)
-        );
-        if (alreadyApproved.length >= 1) {
-          const names = alreadyApproved
-            .map(r => (r.employees || employees.find(e => e.id === r.employee_id))?.name || '?')
-            .join(', ');
-          const [, m, d] = date.split('-');
-          if (!confirm(`⚠️ ${Number(m)}월 ${Number(d)}일에 이미 ${alreadyApproved.length}명(${names}) 휴무 승인됨.\n계속 승인하시겠습니까?`)) return;
-        }
+      // 구역 최소 인원/스킬 타당성 — 승인 시 그날 스케줄이 펑크나는지 차단
+      const emp = employees.find(e => e.id === employeeId);
+      const selfIsHalf = type === 'annual' && Number((requests.find(r => r.id === id) || {}).days) === 0.5;
+      const feas = offFeasibility(emp, date, employees, requests, conditions, scheduledOffDates, selfIsHalf);
+      if (!feas.ok) {
+        const [, m, d] = date.split('-');
+        if (!confirm(`⚠️ ${Number(m)}월 ${Number(d)}일 ${emp?.name || ''} 휴무를 승인하면 그날 최소 인원이 깨집니다:\n· ${feas.problems.join('\n· ')}\n\n이 날은 스케줄을 정상적으로 짤 수 없습니다. 그래도 승인하시겠습니까?`)) return;
       }
       if (type === 'annual') {
         const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
@@ -208,6 +202,16 @@ async function renderRequestsTab(branchId) {
     window.doOverride = async (id, newStatus, type, employeeId, date) => {
       // 거절 연차를 '승인으로' 되돌릴 때도 잔여 음수 경고 (doApprove와 동일 가드)
       const useDays = Number((requests.find(r => r.id === id) || {}).days) || 1;
+      if (newStatus === 'override_approved') {
+        // 구역 최소 인원/스킬 타당성 — 승인으로 되돌릴 때도 그날 펑크 차단
+        const emp = employees.find(e => e.id === employeeId);
+        const selfIsHalf = type === 'annual' && useDays === 0.5;
+        const feas = offFeasibility(emp, date, employees, requests, conditions, scheduledOffDates, selfIsHalf);
+        if (!feas.ok) {
+          const [, m, d] = date.split('-');
+          if (!confirm(`⚠️ ${Number(m)}월 ${Number(d)}일 ${emp?.name || ''} 휴무를 승인하면 그날 최소 인원이 깨집니다:\n· ${feas.problems.join('\n· ')}\n\n그래도 승인할까요?`)) return;
+        }
+      }
       if (type === 'annual' && newStatus === 'override_approved') {
         const stats = await getAnnualLeaveStats(branchId, year);
         const st = stats.find(s => s.emp.id === employeeId);
@@ -237,6 +241,48 @@ async function renderRequestsTab(branchId) {
   }
 
   await render();
+}
+
+// 승인 타당성 검사: 이 직원의 휴무를 그날 승인하면 구역 최소 인원/스킬이 깨지는가?
+//  - 보장 인력은 '정직원'. 알바는 현장 호출(무제한)이라 홀 총원은 안 막고, 홀은 min_fulltime만 검사.
+//  - 주방은 전원 정직 → 총원·피자·파스타·오픈 가능 인원을 모두 검사.
+//  - 승인된 휴무(approved/override_approved) + 이미 배정된 휴무(schedule)까지 합산해 그날 '쉬는' 사람을 센다.
+function offFeasibility(emp, date, employees, requests, conditions, scheduledOffDates = new Map(), selfIsHalf = false) {
+  if (!emp || !emp.role || !date) return { ok: true, problems: [] };
+  const zone = emp.role.startsWith('kitchen') ? 'kitchen' : emp.role.startsWith('hall') ? 'hall' : null;
+  if (!zone) return { ok: true, problems: [] };
+
+  const [yy, mm, dd] = date.split('-').map(Number);
+  const weekend = typeof isHolidayOrWeekend === 'function' && isHolidayOrWeekend(yy, mm, dd);
+  const cond = (conditions || []).find(c => c.zone === zone && c.day_type === (weekend ? 'weekend' : 'weekday'));
+  if (!cond) return { ok: true, problems: [] };
+
+  // 그날 이 구역에서 '쉬는' 직원 id. 반차(annual·0.5일)는 그날 절반 근무 → 엔진/연속근무경고와
+  // 동일하게 '쉬는 사람'에서 제외한다(거짓 차단 방지). 승인 대상 본인이 반차면 emp.id도 안 넣음.
+  const isHalf = r => r.type === 'annual' && Number(r.days) === 0.5;
+  const offIds = new Set();
+  if (!selfIsHalf) offIds.add(emp.id);
+  (requests || []).forEach(r => {
+    if (r.date === date && ['approved', 'override_approved'].includes(r.status) && !isHalf(r)) offIds.add(r.employee_id);
+  });
+  scheduledOffDates.forEach((set, eid) => { if (set.has(date)) offIds.add(eid); });
+
+  const zoneEmps = (employees || []).filter(e => e.role && e.role.startsWith(zone) && e.active !== false);
+  const working = zoneEmps.filter(e => !offIds.has(e.id));
+  const workFull = working.filter(e => e.employment_type === 'fulltime');
+  const cnt = pred => working.filter(pred).length;
+
+  const problems = [];
+  if (zone === 'hall') {
+    const need = cond.min_fulltime ?? 0;
+    if (workFull.length < need) problems.push(`홀 정직원 ${workFull.length}명 < 최소 ${need}명`);
+  } else { // kitchen
+    if (working.length < (cond.min_total ?? 0)) problems.push(`주방 총원 ${working.length}명 < 최소 ${cond.min_total}명`);
+    if (cnt(e => e.pizza_capable)  < (cond.min_pizza_capable ?? 0)) problems.push(`피자 가능 ${cnt(e => e.pizza_capable)}명 < 최소 ${cond.min_pizza_capable}명`);
+    if (cnt(e => e.pasta_capable)  < (cond.min_pasta_capable ?? 0)) problems.push(`파스타 가능 ${cnt(e => e.pasta_capable)}명 < 최소 ${cond.min_pasta_capable}명`);
+    if (cnt(e => e.open_capable)   < (cond.min_open_shift ?? 0))    problems.push(`오픈 가능 ${cnt(e => e.open_capable)}명 < 최소 ${cond.min_open_shift}명`);
+  }
+  return { ok: problems.length === 0, problems, weekend };
 }
 
 function getConsecutiveWarnings(employees, requests, year, month, conditions, scheduledOffDates = new Map()) {

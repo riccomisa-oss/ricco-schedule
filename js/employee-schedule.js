@@ -16,6 +16,15 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         .eq('month', month)
         .maybeSingle();
 
+      // 연차 잔여는 스케줄 발행 여부와 무관하게 항상 표시
+      const annualStats = employee.hire_date ? await getAnnualLeaveStats(branchId, year) : [];
+      const myStat = annualStats.find(s => s.emp.id === employee.id);
+      const leaveBanner = myStat ? `
+        <div style="display:flex;align-items:center;gap:8px;background:#f1f8e9;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+          🌿 연차 잔여 <strong style="color:var(--olive);font-size:15px;margin:0 3px;">${myStat.remaining}일</strong>
+          <span style="color:var(--gray);">(총 ${myStat.total}일 중 ${myStat.used}일 사용)</span>
+        </div>` : '';
+
       if (!schedule || !schedule.published_at) {
         el.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -26,6 +35,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
               <button class="btn btn-ghost btn-sm" id="next-month-es">▶</button>
             </div>
           </div>
+          ${leaveBanner}
           <div class="card" style="text-align:center;padding:40px;color:var(--gray);">
             아직 스케줄이 발행되지 않았습니다.
           </div>`;
@@ -39,9 +49,6 @@ async function renderEmployeeScheduleTab(employee, branchId) {
       }
 
       const entries = await getScheduleEntries(schedule.id);
-
-      const annualStats = employee.hire_date ? await getAnnualLeaveStats(branchId, year) : [];
-      const myStat = annualStats.find(s => s.emp.id === employee.id);
 
       const myEntries = entries.filter(e => e.employee_id === employee.id);
       const myEntryMap = new Map(myEntries.map(e => [e.date, e]));

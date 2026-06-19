@@ -643,60 +643,63 @@ async function autoAssignShifts({ schedule, kitchenEmps, hallEmps, openCapableEm
   const hallWeekendMin     = conditions.find(c => c.zone === 'hall'    && c.day_type === 'weekend')?.min_total || 3;
   const maxConsecutive     = conditions.find(c => c.max_consecutive_days != null)?.max_consecutive_days ?? 4;
 
-  const hallFullTimeIds = new Set(hallEmps.filter(e => e.employment_type === 'fulltime').map(e => e.id));
+  const hallFull = hallEmps.filter(e => e.employment_type === 'fulltime');
+  const hallAlba = hallEmps.filter(e => e.employment_type === 'parttime');
+  const hc = dt => conditions.find(c => c.zone === 'hall' && c.day_type === dt) || {};
+  const hallFtWdMin = hc('weekday').min_fulltime ?? 0;
+  const hallFtWeMin = hc('weekend').min_fulltime ?? 0;
+  const hallPtWdMin = hc('weekday').min_parttime ?? 0;
+  const hallPtWeMin = hc('weekend').min_parttime ?? 0;
 
   const kitchenAutoOff = assignZoneOff(kitchenEmps, approvedOffDates, daysInMonth, year, month, kitchenWeekdayMin, kitchenWeekendMin, new Set(), maxConsecutive);
-  const hallAutoOff    = assignZoneOff(hallEmps,    approvedOffDates, daysInMonth, year, month, hallWeekdayMin,    hallWeekendMin, hallFullTimeIds, maxConsecutive);
+  // 홀 정직원만 휴무 분배(정직원 최소 인원 보장). 알바는 휴무 대상이 아니라 '그날 필요 수만큼 근무'.
+  const hallFullAutoOff = assignZoneOff(hallFull, approvedOffDates, daysInMonth, year, month, Math.max(1, hallFtWdMin), Math.max(1, hallFtWeMin), new Set(), maxConsecutive);
 
-  // ── 초과 인원 강제 휴무 ────────────────────────────────────
-  // 연차는 직원이 직접 신청한 것만 반영 (자동 생성 없음)
-  const zones = [
-    { zoneEmps: kitchenEmps, zoneAutoOff: kitchenAutoOff, wdMin: kitchenWeekdayMin, weMin: kitchenWeekendMin, ftIds: new Set() },
-    { zoneEmps: hallEmps,    zoneAutoOff: hallAutoOff,    wdMin: hallWeekdayMin,    weMin: hallWeekendMin,    ftIds: hallFullTimeIds },
-  ];
-
-  for (const { zoneEmps, zoneAutoOff, wdMin, weMin, ftIds } of zones) {
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr  = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      const isWeekend = isHolidayOrWeekend(year, month, day);
-      const maxWork  = isWeekend ? weMin : wdMin;
-
-      const working = zoneEmps.filter(e =>
-        !approvedOffDates.get(e.id)?.has(dateStr) &&
-        !zoneAutoOff.get(e.id)?.has(dateStr)
-      );
-      const excess = working.length - maxWork;
-      if (excess <= 0) continue;
-
-      // 파트타이머 우선, 그다음 autoOff가 적은 순
-      const candidates = [...working].sort((a, b) => {
-        const aFt = ftIds.has(a.id) ? 1 : 0;
-        const bFt = ftIds.has(b.id) ? 1 : 0;
-        if (aFt !== bFt) return aFt - bFt;
-        return (zoneAutoOff.get(a.id)?.size || 0) - (zoneAutoOff.get(b.id)?.size || 0);
-      });
-
-      const forcedOff = new Set();
-      let forced = 0;
-      for (const emp of candidates) {
-        if (forced >= excess) break;
-        if (ftIds.has(emp.id)) {
-          const remainFt = working.filter(e =>
-            ftIds.has(e.id) && e.id !== emp.id && !forcedOff.has(e.id)
-          ).length;
-          if (remainFt === 0) continue;
-        }
-        zoneAutoOff.get(emp.id).add(dateStr);
-        forcedOff.add(emp.id);
-        forced++;
-      }
+  // ── 주방 초과 인원 강제 휴무 (홀은 정직원 고정 + 알바 필요수 배정이라 제외) ──
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const maxWork = isHolidayOrWeekend(year, month, day) ? kitchenWeekendMin : kitchenWeekdayMin;
+    const working = kitchenEmps.filter(e =>
+      !approvedOffDates.get(e.id)?.has(dateStr) && !kitchenAutoOff.get(e.id)?.has(dateStr));
+    const excess = working.length - maxWork;
+    if (excess <= 0) continue;
+    const candidates = [...working].sort((a, b) =>
+      (kitchenAutoOff.get(a.id)?.size || 0) - (kitchenAutoOff.get(b.id)?.size || 0));
+    let forced = 0;
+    for (const emp of candidates) {
+      if (forced >= excess) break;
+      kitchenAutoOff.get(emp.id).add(dateStr);
+      forced++;
     }
   }
 
+  // ── 홀 알바: 그날 필요 수 = max(알바최소, 총원최소 − 근무 정직원). 나머지 슬롯은 안 부름(off) ──
+  const albaWork = new Map();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const we = isHolidayOrWeekend(year, month, day);
+    const workFull = hallFull.filter(e =>
+      !approvedOffDates.get(e.id)?.has(dateStr) && !hallFullAutoOff.get(e.id)?.has(dateStr)).length;
+    const totMin = we ? hallWeekendMin : hallWeekdayMin;
+    const ptMin  = we ? hallPtWeMin    : hallPtWdMin;
+    let need = Math.max(ptMin, totMin - workFull);
+    need = Math.max(0, Math.min(need, hallAlba.length));
+    const set = new Set();
+    if (hallAlba.length) {
+      const start = day % hallAlba.length; // 슬롯 순환(공평)
+      for (let i = 0; i < need; i++) set.add(hallAlba[(start + i) % hallAlba.length].id);
+    }
+    albaWork.set(dateStr, set);
+  }
+
   function isOff(emp, dateStr) {
-    return approvedOffDates.get(emp.id)?.has(dateStr)
-        || kitchenAutoOff.get(emp.id)?.has(dateStr)
-        || hallAutoOff.get(emp.id)?.has(dateStr);
+    if (emp.role && emp.role.startsWith('kitchen')) {
+      return !!(approvedOffDates.get(emp.id)?.has(dateStr) || kitchenAutoOff.get(emp.id)?.has(dateStr));
+    }
+    if (emp.employment_type === 'fulltime') { // 홀 정직원
+      return !!(approvedOffDates.get(emp.id)?.has(dateStr) || hallFullAutoOff.get(emp.id)?.has(dateStr));
+    }
+    return !(albaWork.get(dateStr)?.has(emp.id)); // 홀 알바: 근무 집합에 없으면 off(=안 부름)
   }
 
   const upserts = [];

@@ -14,7 +14,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Pretendard', -apple-system, sans-serif;
+  font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   background: var(--cream);
   color: var(--dark);
   min-height: 100vh;
@@ -31,7 +31,15 @@ header {
 header h1 { font-size: 18px; font-weight: 600; }
 header span { color: var(--gray); font-size: 14px; }
 
-.tabs { display: flex; border-bottom: 2px solid var(--light); background: var(--white); }
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--light);
+  background: var(--white);
+  overflow-x: auto;            /* 좁은 화면에서 탭 6개가 잘리지 않고 가로 스크롤 */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;       /* Firefox: 스크롤바 숨김 */
+}
+.tabs::-webkit-scrollbar { display: none; } /* Chrome/Safari: 스크롤바 숨김 */
 .tab-btn {
   padding: 14px 20px;
   border: none;
@@ -42,6 +50,8 @@ header span { color: var(--gray); font-size: 14px; }
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   transition: color 0.2s;
+  flex-shrink: 0;              /* 압축되지 않게 — 넘치면 스크롤 */
+  white-space: nowrap;
 }
 .tab-btn.active { color: var(--red); border-bottom-color: var(--red); font-weight: 600; }
 

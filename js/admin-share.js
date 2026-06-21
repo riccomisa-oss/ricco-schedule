@@ -32,10 +32,13 @@ ${employeeUrl}</textarea>
     </div>
   `;
 
-  document.getElementById('copy-link-btn').addEventListener('click', () => {
-    navigator.clipboard.writeText(employeeUrl).then(() => {
-      document.getElementById('copy-msg').textContent = '링크가 복사되었습니다!';
-      setTimeout(() => { document.getElementById('copy-msg').textContent = ''; }, 2000);
-    });
+  document.getElementById('copy-link-btn').addEventListener('click', async () => {
+    const ok = await copyToClipboard(employeeUrl);
+    const msg = document.getElementById('copy-msg');
+    msg.style.color = ok ? 'var(--olive)' : 'var(--red)';
+    msg.textContent = ok
+      ? '링크가 복사되었습니다!'
+      : '복사 실패 — 위 링크를 길게 눌러 직접 복사해 주세요.';
+    setTimeout(() => { msg.textContent = ''; msg.style.color = 'var(--olive)'; }, 2500);
   });
 }

@@ -416,21 +416,27 @@ async function renderScheduleTab(branchId) {
       ({ year, month } = nextMonth(year, month)); render();
     });
     document.getElementById('publish-btn').addEventListener('click', async () => {
-      if (isPublished) await unpublishSchedule(schedule.id);
-      else await publishSchedule(schedule.id);
+      if (isPublished) {
+        if (!confirm('발행을 취소하면 직원이 이 달 스케줄을 볼 수 없게 됩니다. 계속할까요?')) return;
+        await unpublishSchedule(schedule.id);
+      } else {
+        await publishSchedule(schedule.id);
+      }
       render();
     });
 
     if (isPublished && document.getElementById('copy-emp-link-btn')) {
-      document.getElementById('copy-emp-link-btn').addEventListener('click', () => {
+      document.getElementById('copy-emp-link-btn').addEventListener('click', async () => {
         const url = `${window.location.origin}/employee?branch=${branchId}`;
-        navigator.clipboard.writeText(url).then(() => {
-          document.getElementById('copy-emp-link-btn').textContent = '✅ 복사됨!';
+        const ok = await copyToClipboard(url);
+        const btn = document.getElementById('copy-emp-link-btn');
+        if (btn) {
+          btn.textContent = ok ? '✅ 복사됨!' : '⚠️ 복사 실패 — 길게 눌러 복사';
           setTimeout(() => {
-            const btn = document.getElementById('copy-emp-link-btn');
-            if (btn) btn.textContent = '🔗 링크 복사';
-          }, 2000);
-        });
+            const b = document.getElementById('copy-emp-link-btn');
+            if (b) b.textContent = '🔗 링크 복사';
+          }, 2500);
+        }
       });
     }
 

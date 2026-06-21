@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="no-referrer" />
   <title>리꼬 피자 — 스케줄 관리</title>
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -61,8 +62,12 @@
 <script src="js/admin-share.js"></script>
 <script>
   let currentBranchId = BRANCH_IDS.HANAM;
+  let adminUnlocked = false;
 
   function unlockAdmin() {
+    if (adminUnlocked) return; // 중복 진입(세션복원 + ?k=) 시 initAdmin 이중 호출 방지
+    adminUnlocked = true;
+    sessionStorage.setItem('ricco_admin', '1'); // 같은 탭 세션 동안 유지(새로고침 재입력 방지)
     document.getElementById('auth-gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     initAdmin();
@@ -89,6 +94,10 @@
       unlockAdmin();
     }
   })();
+
+  // 같은 탭 세션 동안 로그인 유지 — 새로고침 시 비번 재입력 방지.
+  // (탭을 닫으면 sessionStorage가 비워져 자동 로그아웃 → 공용기기 안전)
+  if (sessionStorage.getItem('ricco_admin') === '1') unlockAdmin();
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {

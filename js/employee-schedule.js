@@ -123,10 +123,13 @@ async function renderEmployeeScheduleTab(employee, branchId) {
             html += `<div style="font-size:12px;color:var(--gray);">오픈 ${esc(opener.name)}</div>`;
           }
         } else {
-          // close: 마감 표기 없이 오프너 이름만
+          // close: 마감 칩 + 오프너 이름 (빈 칸과 구분되도록 명시)
+          html += `<div style="margin:2px 0 3px;padding:3px 0;background:#e3f2fd;border-radius:4px;text-align:center;">
+            <span style="font-size:12px;font-weight:700;color:#1565c0;">마감</span>
+          </div>`;
           const opener = workers.find(w => w.shift === 'open');
           if (opener) {
-            html += `<div style="font-size:12px;color:var(--gray);margin-top:2px;">오픈 ${esc(opener.name)}</div>`;
+            html += `<div style="font-size:12px;color:var(--gray);">오픈 ${esc(opener.name)}</div>`;
           }
         }
         return html;
@@ -150,6 +153,7 @@ async function renderEmployeeScheduleTab(employee, branchId) {
         <div style="overflow-x:auto;">${buildCalendarHTML(year, month, renderCell)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;margin-top:12px;">
           <span style="background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:2px 8px;font-weight:600;">오픈</span>
+          <span style="background:#e3f2fd;color:#1565c0;border-radius:3px;padding:2px 8px;font-weight:600;">마감</span>
           <span style="background:#f3e5f5;color:#6a1b9a;border-radius:3px;padding:2px 8px;font-weight:600;">홀</span>
           <span style="background:#fce4ec;color:#c62828;border-radius:3px;padding:2px 8px;font-weight:600;">휴무</span>
         </div>

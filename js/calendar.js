@@ -91,6 +91,30 @@ function buildCalendarHTML(year, month, renderCell, renderOtherCell) {
   return html;
 }
 
+// 클립보드 복사 — navigator.clipboard 미지원/비허용(카톡 인앱 등) 시 textarea fallback.
+// 성공 여부를 boolean으로 반환해 호출부가 피드백을 줄 수 있게 한다.
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) { /* fallthrough → 수동 복사 */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 function prevMonth(year, month) {
   return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 }
